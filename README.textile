@@ -1,1 +1,1 @@
-"Learn more ...":https://github.com/krasserm/scalaz-camel
+"Learn more ...":https://github.com/krasserm/scalaz-camel/wiki
