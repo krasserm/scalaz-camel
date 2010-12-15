@@ -1,0 +1,7 @@
+scalaz-camel.*
+project/boot
+project/build/target
+project/plugins/project
+project/plugins/target
+lib_managed
+target
