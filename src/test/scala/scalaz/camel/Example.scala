@@ -212,9 +212,9 @@ class Example extends ExampleSupport with JUnitSuite with MustMatchers with Befo
   //  Simple routes with single MessageProcessor
   // -------------------------------------------------
   @Test def testMessageProcessor {
-    from("direct:test-40") process { m => Right(m) }
-    from("direct:test-41") process { m => Right(m.appendBody("-41")) }
-    from("direct:test-42") process { m => Left(new Exception("left")) }
+    from("direct:test-40") process { m => m.success }
+    from("direct:test-41") process { m => m.appendBody("-41").success }
+    from("direct:test-42") process { m => Failure(new Exception("left")) }
 
     template.requestBody("direct:test-40", "test") must equal("test")
     template.requestBody("direct:test-41", "test") must equal("test-41")
@@ -301,17 +301,17 @@ class Example extends ExampleSupport with JUnitSuite with MustMatchers with Befo
       appendString("-1") >=> "direct:extern-1",
       appendString("-2") >=> "direct:extern-2") must
       equal(List(
-        Right(Message("a-1-extern-1")),
-        Right(Message("b-1-extern-1")),
-        Right(Message("a-2-extern-2")),
-        Right(Message("b-2-extern-2"))
+        Success(Message("a-1-extern-1")),
+        Success(Message("b-1-extern-1")),
+        Success(Message("a-2-extern-2")),
+        Success(Message("b-2-extern-2"))
       ))
 
     // Alternative: single route using map (i.e ∘)
     List("a", "b") ∘ (createMessage _) ∘ (appendString("-0") >=> "direct:extern-1") must
       equal(List(
-        Right(Message("a-0-extern-1")),
-        Right(Message("b-0-extern-1"))
+        Success(Message("a-0-extern-1")),
+        Success(Message("b-0-extern-1"))
       ))
 
     def createMessage(body: Any)(implicit context: CamelContext) =

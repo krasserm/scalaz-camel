@@ -36,7 +36,7 @@ trait CamelDsl extends CamelConv {
 
   /** The content-based router EIP */
   def choose(f: PartialFunction[Message, MessageProcessorKleisli]) =
-    kleisli[RightProjectionMonad, Message, Message]((m: Message) => f(m) apply m)
+    kleisli[ValidationMonad, Message, Message]((m: Message) => f(m) apply m)
 
   /** The multicast EIP */
   def multicast(destinations: MessageProcessorKleisli*)(aggregator: MessageAggregator): MessageProcessorKleisli =
@@ -44,9 +44,9 @@ trait CamelDsl extends CamelConv {
         // apply all destination routes to the given message and store the results as list
         val results = msg.pure[List] <*> destinations.toList ∘ kleisliFunction
         // aggregate the results by folding over the list and return
-        // - the aggregated message if all applications were successful i.e. Right(message)
-        // - return the first exception if one or more applications failed i.e. Left(exception)
-        results.tail.foldLeft(results.head) { (z, m) => m <*> z ∘ aggregator.curried }.e
+        // - the aggregated message if all applications were successful i.e. Success(message)
+        // - return the first exception if one or more applications failed i.e. Failure(exception)
+        results.tail.foldLeft(results.head) { (z, m) => m <*> z ∘ aggregator.curried }
       }
     )
 
@@ -77,7 +77,7 @@ trait CamelDsl extends CamelConv {
   class MainRouteDefinition(uri: String) {
     /** Connects the main route <code>r</code> with the endpoint defined by <code>uri</code>. */
     def route(r: MessageProcessorKleisli)(implicit context: CamelContext): ErrorRouteDefinition =
-      process((m: Message) => (r apply m).e)(context)
+      process((m: Message) => r apply m)(context)
 
     /** Connects the main processor <code>p</code> with the endpoint defined by <code>uri</code>. */
     def process(p: MessageProcessor)(implicit context: CamelContext): ErrorRouteDefinition = {
@@ -160,7 +160,7 @@ trait CamelDsl extends CamelConv {
     def route(message: Message, target: MessageProcessor, handler: Option[MessageProcessor]) {
       val exchange = message.exchange
       target(message) match {
-        case Left(e) => {
+        case Failure(e) => {
           for (me <- exchange) {
             me.setException(e)
           }
@@ -171,7 +171,7 @@ trait CamelDsl extends CamelConv {
             route(message.setException(e), h, None)
           }
         }
-        case Right(m) => {
+        case Success(m) => {
           for (me <- exchange; e <- m.exception) {
             me.setException(e)
           }

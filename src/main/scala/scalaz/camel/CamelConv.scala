@@ -17,7 +17,6 @@ package scalaz.camel
 
 import org.apache.camel.{CamelContext, Processor}
 
-import scala.Either.RightProjection
 import scalaz._
 
 /**
@@ -34,20 +33,23 @@ trait CamelConv {
   /**
    * The monad used for Kleisli composition. This monad ensures that message processors
    * <ul>
-   *   <li>returning Left(exception) cause a Kleisli-composed route to stop message processing</li>
-   *   <li>returning Right(message) cause a Kleisli-composed route to continue message processing</li>
+   *   <li>returning Failure(exception) cause a Kleisli-composed route to stop message processing</li>
+   *   <li>returning Success(message) cause a Kleisli-composed route to continue message processing</li>
    * </ul>
    */
-  type RightProjectionMonad[B] = PartialApply1Of2[RightProjection, Exception]#Apply[B]
+  type ValidationMonad[B] = PartialApply1Of2[Validation, Exception]#Apply[B]
 
   /** Concrete Kleisli type of a message processor */
-  type MessageProcessorKleisli = Kleisli[RightProjectionMonad, Message, Message]
+  type MessageProcessorKleisli = Kleisli[ValidationMonad, Message, Message]
 
-  /** Message processor returning Right(message) when successful or Left(exception) on error */
-  type MessageProcessor = Message => Either[Exception, Message]
+  /** Message processor returning Success(message) when successful or Failure(exception) on error */
+  type MessageProcessor = Message => Validation[Exception, Message]
 
   /** Function that combines two messages into into one */
   type MessageAggregator = (Message, Message) => Message
+
+  /** Needed to use ValidationMonad as applicative functor */
+  implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
 
   /**
    * Converts a message processing function to a <code>MessageProcessorKleisli</code>.
@@ -69,19 +71,19 @@ trait CamelConv {
     kleisliProcessor(messageProcessor(uri, context))
 
   implicit def messageProcessorKleisliToMessageProcessor(p: MessageProcessorKleisli): MessageProcessor =
-    (m: Message) => (p apply m).e
+    (m: Message) => p apply m
 
   def kleisliFunction(p: MessageProcessorKleisli) =
-    kleisliFn[RightProjectionMonad, Message, Message](p)
+    kleisliFn[ValidationMonad, Message, Message](p)
 
   def kleisliProcessor(p: MessageProcessor) =
-    kleisli[RightProjectionMonad, Message, Message]((m: Message) => p(m).right)
+    kleisli[ValidationMonad, Message, Message]((m: Message) => p(m))
 
   private[camel] def messageProcessor(p: Message => Message): MessageProcessor = (m: Message) => {
     try {
-      Right(p(m))
+      p(m).success
     } catch {
-      case e: Exception => Left(e)
+      case e: Exception => e.fail
     }
   }
 
@@ -96,16 +98,16 @@ trait CamelConv {
     try {
       p.process(me)
       if (me.isFailed) {
-        Left(me.getException)
+        me.getException.fail
       } else {
         val rm = if (me.hasOut) me.getOut else me.getIn
         // post-process exchange
         me.setOut(null)
         me.setIn(rm)
-        Right(rm.toMessage)
+        rm.toMessage.success
       }
     } catch {
-      case e: Exception => Left(e)
+      case e: Exception => e.fail
     }
   }
 
