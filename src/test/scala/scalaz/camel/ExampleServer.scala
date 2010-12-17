@@ -16,8 +16,8 @@
 package scalaz.camel
 
 import scalaz._
-import org.junit.Test
-import org.scalatest.BeforeAndAfterAll
+import org.junit.{After, Test}
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.junit.JUnitSuite
 import org.scalatest.matchers.MustMatchers
 
@@ -48,7 +48,7 @@ class ExampleServer extends ExampleSupport with JUnitSuite with MustMatchers wit
 
   override def beforeAll = context.start
 
-  val mock = context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
+  @After def afterEach = mock.reset
 
   @Test def testHttp() {
     from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
@@ -77,4 +77,24 @@ class ExampleServer extends ExampleSupport with JUnitSuite with MustMatchers wit
     template.sendBody("direct:server-test-jms", "c")
     mock.assertIsSatisfied
   }
+
+  @Test def testJmsFailure() {
+    from("jms:queue:scalaz-camel-test-failure") route {
+      appendString("-1") >=> choose {
+        case Message("a-1", _) => failWith("failure")
+        case Message("b-1", _) => logMessage
+      } >=> "mock:mock"
+    }
+
+    from("direct:server-test-jms-failure") route {
+      "jms:queue:scalaz-camel-test-failure" >=> logMessage
+    }
+
+    mock.expectedBodiesReceived("b-1")
+    template.sendBody("direct:server-test-jms-failure", "a")
+    template.sendBody("direct:server-test-jms-failure", "b")
+    mock.assertIsSatisfied
+  }
+
+  def mock = context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
 }
