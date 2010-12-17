@@ -16,6 +16,9 @@
 package scalaz.camel
 
 import scalaz._
+import org.junit.Test
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.junit.JUnitSuite
 import org.scalatest.matchers.MustMatchers
 
 /**
@@ -32,42 +35,46 @@ object ExampleServerContext extends ExampleSupport {
   implicit val context = new DefaultCamelContext(registry)
 
   val template = context.createProducerTemplate
-
-  context.start
 }
 
 /**
  * @author Martin Krasser
  */
-object ExampleServer extends ExampleSupport with MustMatchers with Application {
+class ExampleServer extends ExampleSupport with JUnitSuite with MustMatchers with BeforeAndAfterAll {
   import Scalaz._
   import Camel._
 
   import ExampleServerContext._
 
+  override def beforeAll = context.start
+
   val mock = context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
 
-  from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
-    appendString("-1") >=> appendString("-2")
+  @Test def testHttp() {
+    from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
+      appendString("-1") >=> appendString("-2")
+    }
+
+    from("direct:server-test-http") route {
+      "http://localhost:8865/scalaz/camel/test" >=> appendString(" done")
+    }
+
+    template.requestBody("direct:server-test-http", "hello") must equal("hello-1-2 done")
   }
 
-  from("jms:queue:scalaz-camel-test") route {
-    appendString("-1") >=> appendString("-2") >=> logMessage >=> "mock:mock"
+  @Test def testJms() {
+    from("jms:queue:scalaz-camel-test") route {
+      appendString("-1") >=> appendString("-2") >=> logMessage >=> "mock:mock"
+    }
+
+    from("direct:server-test-jms") route {
+      "jms:queue:scalaz-camel-test" >=> logMessage
+    }
+
+    mock.expectedBodiesReceived("a-1-2", "b-1-2", "c-1-2")
+    template.sendBody("direct:server-test-jms", "a")
+    template.sendBody("direct:server-test-jms", "b")
+    template.sendBody("direct:server-test-jms", "c")
+    mock.assertIsSatisfied
   }
-
-  from("direct:server-test-http") route {
-    "http://localhost:8865/scalaz/camel/test" >=> appendString(" done")
-  }
-
-  from("direct:server-test-jms") route {
-    "jms:queue:scalaz-camel-test" >=> logMessage
-  }
-
-  template.requestBody("direct:server-test-http", "hello") must equal("hello-1-2 done")
-
-  mock.expectedBodiesReceived("a-1-2", "b-1-2", "c-1-2")
-  template.sendBody("direct:server-test-jms", "a")
-  template.sendBody("direct:server-test-jms", "b")
-  template.sendBody("direct:server-test-jms", "c")
-  mock.assertIsSatisfied
 }

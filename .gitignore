@@ -1,3 +1,4 @@
+activemq-data
 scalaz-camel.*
 project/boot
 project/build/target
