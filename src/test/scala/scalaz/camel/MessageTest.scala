@@ -19,86 +19,88 @@ import java.io.InputStream
 
 import org.apache.camel.NoTypeConversionAvailableException
 import org.apache.camel.impl.DefaultCamelContext
-import org.junit.Test
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.junit.JUnitSuite
+import org.scalatest.{WordSpec, BeforeAndAfterAll}
 import org.scalatest.matchers.MustMatchers
 
 /**
  * @author Martin Krasser
  */
-class MessageTest extends JUnitSuite with BeforeAndAfterAll with MustMatchers {
+class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
   implicit val context = new DefaultCamelContext
 
   override protected def beforeAll = context.start
 
-  @Test def testBodyAs {
-    Message(1.4).bodyAs[String] must equal("1.4")
-    evaluating { Message(1.4).bodyAs[InputStream] } must produce [NoTypeConversionAvailableException]
-  }
+  def support = afterWord("support")
 
-  @Test def testHeader {
-    val message = Message("test" , Map("test" -> 1.4))
-    message.header("test") must equal(Some(1.4))
-    message.header("blah") must equal(None)
-  }
+  "A message" must support {
+    "body conversion to a specified type" in {
+      Message(1.4).bodyAs[String] must equal("1.4")
+      evaluating { Message(1.4).bodyAs[InputStream] } must produce [NoTypeConversionAvailableException]
+    }
 
-  @Test def testHeaderAs {
-    val message = Message("test" , Map("test" -> 1.4))
-    message.headerAs[String]("test") must equal(Some("1.4"))
-    message.headerAs[String]("blah") must equal(None)
-  }
+    "header conversion to a specified type" in {
+      val message = Message("test" , Map("test" -> 1.4))
+      message.headerAs[String]("test") must equal(Some("1.4"))
+      message.headerAs[String]("blah") must equal(None)
+    }
 
-  @Test def testHeadersSet = {
-    val message = Message("test" , Map("A" -> "1", "B" -> "2"))
-    message.headers(Set("B")) must equal(Map("B" -> "2"))
-  }
+    "getting a header by name" in {
+      val message = Message("test" , Map("test" -> 1.4))
+      message.header("test") must equal(Some(1.4))
+      message.header("blah") must equal(None)
+    }
 
-  @Test def testTransformBody {
-    val message = Message("a" , Map("A" -> "1"))
-    message.transformBody[String](body => body + "b") must equal(Message("ab", Map("A" -> "1")))
-  }
+    "getting headers by a set of name" in {
+      val message = Message("test" , Map("A" -> "1", "B" -> "2"))
+      message.headers(Set("B")) must equal(Map("B" -> "2"))
+    }
 
-  @Test def testAppendBody {
-    val message = Message("a" , Map("A" -> "1"))
-    message.appendBody("b") must equal(Message("ab", Map("A" -> "1")))
-  }
+    "transformation of the body using a transformer function" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.transformBody[String](body => body + "b") must equal(Message("ab", Map("A" -> "1")))
+    }
 
-  @Test def testSetBody {
-    val message = Message("a" , Map("A" -> "1"))
-    message.setBody("b") must equal(Message("b", Map("A" -> "1")))
-  }
+    "appending to the body using a string representation" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.appendBody("b") must equal(Message("ab", Map("A" -> "1")))
+    }
 
-  @Test def testSetHeaders {
-    val message = Message("a" , Map("A" -> "1"))
-    message.setHeaders(Map("C" -> "3")) must equal(Message("a", Map("C" -> "3")))
-  }
+    "setting the body" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.setBody("b") must equal(Message("b", Map("A" -> "1")))
+    }
 
-  @Test def testAddHeader {
-    val message = Message("a" , Map("A" -> "1"))
-    message.addHeader("B" -> "2") must equal(Message("a", Map("A" -> "1", "B" -> "2")))
-  }
+    "setting a headers set" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.setHeaders(Map("C" -> "3")) must equal(Message("a", Map("C" -> "3")))
+    }
 
-  @Test def testAddHeaders {
-    val message = Message("a" , Map("A" -> "1"))
-    message.addHeaders(Map("B" -> "2")) must equal(Message("a", Map("A" -> "1", "B" -> "2")))
-  }
+    "adding a header" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.addHeader("B" -> "2") must equal(Message("a", Map("A" -> "1", "B" -> "2")))
+    }
 
-  @Test def testRemoveHeader {
-    val message = Message("a" , Map("A" -> "1", "B" -> "2"))
-    message.removeHeader("B") must equal(Message("a", Map("A" -> "1")))
-  }
+    "adding a headers set" in {
+      val message = Message("a" , Map("A" -> "1"))
+      message.addHeaders(Map("B" -> "2")) must equal(Message("a", Map("A" -> "1", "B" -> "2")))
+    }
 
-  @Test def testSetException {
-    val exception = new Exception("test")
-    val message = Message("a").setException(exception)
-    message.exception must equal(Some(exception))
-    Message("a").exception must equal(None)
-  }
+    "removing a header" in {
+      val message = Message("a" , Map("A" -> "1", "B" -> "2"))
+      message.removeHeader("B") must equal(Message("a", Map("A" -> "1")))
+    }
 
-  @Test def testExceptionHandled {
-    val exception = new Exception("test")
-    val message = Message("a").setException(exception)
-    message.exceptionHandled.exception must equal(None)
+    "setting the exception header" in {
+      val exception = new Exception("test")
+      val message = Message("a").setException(exception)
+      message.exception must equal(Some(exception))
+      Message("a").exception must equal(None)
+    }
+
+    "clearing the exception header" in {
+      val exception = new Exception("test")
+      val message = Message("a").setException(exception)
+      message.exceptionHandled.exception must equal(None)
+    }
   }
 }

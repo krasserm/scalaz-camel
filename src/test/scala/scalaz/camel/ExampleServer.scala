@@ -15,11 +15,10 @@
  */
 package scalaz.camel
 
-import scalaz._
-import org.junit.{After, Test}
-import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
-import org.scalatest.junit.JUnitSuite
+import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
+
+import scalaz._
 
 /**
  * @author Martin Krasser
@@ -40,61 +39,65 @@ object ExampleServerContext extends ExampleSupport {
 /**
  * @author Martin Krasser
  */
-class ExampleServer extends ExampleSupport with JUnitSuite with MustMatchers with BeforeAndAfterAll {
+class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
   import Camel._
 
   import ExampleServerContext._
 
   override def beforeAll = context.start
-
-  @After def afterEach = mock.reset
-
-  @Test def testHttp() {
-    from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
-      appendString("-1") >=> appendString("-2")
-    }
-
-    from("direct:server-test-http") route {
-      "http://localhost:8865/scalaz/camel/test" >=> appendString(" done")
-    }
-
-    template.requestBody("direct:server-test-http", "hello") must equal("hello-1-2 done")
-  }
-
-  @Test def testJms() {
-    from("jms:queue:scalaz-camel-test") route {
-      appendString("-1") >=> appendString("-2") >=> logMessage >=> "mock:mock"
-    }
-
-    from("direct:server-test-jms") route {
-      "jms:queue:scalaz-camel-test" >=> logMessage
-    }
-
-    mock.expectedBodiesReceived("a-1-2", "b-1-2", "c-1-2")
-    template.sendBody("direct:server-test-jms", "a")
-    template.sendBody("direct:server-test-jms", "b")
-    template.sendBody("direct:server-test-jms", "c")
-    mock.assertIsSatisfied
-  }
-
-  @Test def testJmsFailure() {
-    from("jms:queue:scalaz-camel-test-failure") route {
-      appendString("-1") >=> choose {
-        case Message("a-1", _) => failWith("failure")
-        case Message("b-1", _) => logMessage
-      } >=> "mock:mock"
-    }
-
-    from("direct:server-test-jms-failure") route {
-      "jms:queue:scalaz-camel-test-failure" >=> logMessage
-    }
-
-    mock.expectedBodiesReceived("b-1")
-    template.sendBody("direct:server-test-jms-failure", "a")
-    template.sendBody("direct:server-test-jms-failure", "b")
-    mock.assertIsSatisfied
-  }
+  override def afterEach = mock.reset
 
   def mock = context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
+
+  def support = afterWord("support")
+
+  "scalaz-camel" should support {
+
+    "communication of http endpoints" in {
+      from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
+        appendString("-1") >=> appendString("-2")
+      }
+
+      from("direct:server-test-http") route {
+        "http://localhost:8865/scalaz/camel/test" >=> appendString(" done")
+      }
+
+      template.requestBody("direct:server-test-http", "hello") must equal("hello-1-2 done")
+    }
+
+    "communication of jms endpoints" in {
+      from("jms:queue:scalaz-camel-test") route {
+        appendString("-1") >=> appendString("-2") >=> logMessage >=> "mock:mock"
+      }
+
+      from("direct:server-test-jms") route {
+        "jms:queue:scalaz-camel-test" >=> logMessage
+      }
+
+      mock.expectedBodiesReceived("a-1-2", "b-1-2", "c-1-2")
+      template.sendBody("direct:server-test-jms", "a")
+      template.sendBody("direct:server-test-jms", "b")
+      template.sendBody("direct:server-test-jms", "c")
+      mock.assertIsSatisfied
+    }
+
+    "fast failure of Kleisli routes" in {
+      from("jms:queue:scalaz-camel-test-failure") route {
+        appendString("-1") >=> choose {
+          case Message("a-1", _) => failWith("failure")
+          case Message("b-1", _) => logMessage
+        } >=> "mock:mock"
+      }
+
+      from("direct:server-test-jms-failure") route {
+        "jms:queue:scalaz-camel-test-failure" >=> logMessage
+      }
+
+      mock.expectedBodiesReceived("b-1")
+      template.sendBody("direct:server-test-jms-failure", "a")
+      template.sendBody("direct:server-test-jms-failure", "b")
+      mock.assertIsSatisfied
+    }
+  }
 }
