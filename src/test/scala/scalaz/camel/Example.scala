@@ -117,7 +117,8 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
 
       from("direct:test-11") route {
         appendString("-11") >=> multicast (
-          appendString("-mc-1") >=> failWith("failure"),
+          appendString("-mc-1") >=> failWith("failure1"),
+          appendString("-mc-1") >=> failWith("failure2"),
           appendString("-mc-2") >=> "direct:extern-1"
         ) (aggregator) >=> appendString(" done")
       }
@@ -126,7 +127,7 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
       try {
         template.requestBody("direct:test-11", "test")
       } catch {
-        case e => e.getCause.getMessage must equal("failure")
+        case e => e.getCause.getMessage must equal("failure1")
       }
     }
 
