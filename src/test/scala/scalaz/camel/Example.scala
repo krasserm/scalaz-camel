@@ -27,19 +27,18 @@ object ExampleContext extends ExampleSupport {
   import org.apache.camel.builder.RouteBuilder
   import org.apache.camel.impl.DefaultCamelContext
 
-  implicit val context = new DefaultCamelContext
-
+  val context = new DefaultCamelContext
   val template = context.createProducerTemplate
-  val routes = new RouteBuilder {
+
+  context.addRoutes(new RouteBuilder {
     def configure = {
       from("direct:extern-1").process(appendString("-extern-1"))
       from("direct:extern-2").process(appendString("-extern-2"))
       from("direct:extern-3").process(appendString("-extern-3"))
       from("direct:extern-4").process(appendString("-extern-4"))
-    }
-  }
-
-  context.addRoutes(routes)
+    }})
+  
+  implicit val router = new Router(context)
 }
 
 /**
@@ -50,7 +49,8 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
   import Camel._
   import ExampleContext._
 
-  override def beforeAll = context.start
+  override def beforeAll = router.start
+  override def afterAll = router.stop
 
   def support = afterWord("support")
 
@@ -287,8 +287,8 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
           Success(Message("b-0-extern-1"))
         ))
 
-      def createMessage(body: Any)(implicit context: CamelContext) =
-        Message(body).setExchange(new DefaultExchange(context))
+      def createMessage(body: Any)(implicit mgnt: ContextMgnt) =
+        Message(body).setExchange(new DefaultExchange(mgnt.context))
     }
   }
 }

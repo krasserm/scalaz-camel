@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import org.apache.camel.{CamelContext, Exchange, Processor}
+import org.apache.camel.{Exchange, Processor}
 
 import scalaz._
 
@@ -76,19 +76,13 @@ trait CamelDsl extends CamelConv {
    */
   class MainRouteDefinition(uri: String) {
     /** Connects the main route <code>r</code> with the endpoint defined by <code>uri</code>. */
-    def route(r: MessageProcessorKleisli)(implicit context: CamelContext): ErrorRouteDefinition =
-      process((m: Message) => r apply m)(context)
+    def route(r: MessageProcessorKleisli)(implicit mgnt: EndpointMgnt): ErrorRouteDefinition =
+      process((m: Message) => r apply m)(mgnt)
 
     /** Connects the main processor <code>p</code> with the endpoint defined by <code>uri</code>. */
-    def process(p: MessageProcessor)(implicit context: CamelContext): ErrorRouteDefinition = {
+    def process(p: MessageProcessor)(implicit mgnt: EndpointMgnt): ErrorRouteDefinition = {
       val processor = new RouteProcessor((m: Message) => p(m)) with ErrorRouteDefinition
-      val endpoint = context.getEndpoint(uri)
-
-      // TODO: manage consumer (and do not start consumer during route construction)
-      // ...
-
-      endpoint.start
-      endpoint.createConsumer(processor).start
+      val consumer = mgnt.createConsumer(uri, processor)
       processor
     }
   }

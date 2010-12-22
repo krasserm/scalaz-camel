@@ -52,14 +52,14 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
   def header(name: String): Option[Any] = headers.get(name)
 
-  def headerAs[A](name: String)(implicit m: Manifest[A], context: CamelContext): Option[A] =
-    header(name).map(convertTo[A](m.erasure.asInstanceOf[Class[A]], context) _)
+  def headerAs[A](name: String)(implicit m: Manifest[A], mgnt: ContextMgnt): Option[A] =
+    header(name).map(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context) _)
 
-  def bodyAs[A](implicit m: Manifest[A], context: CamelContext): A =
-    convertTo[A](m.erasure.asInstanceOf[Class[A]], context)(body)
+  def bodyAs[A](implicit m: Manifest[A], mgnt: ContextMgnt): A =
+    convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body)
 
-  def appendBody(body: Any)(implicit context: CamelContext) =
-    setBody(bodyAs[String] + convertTo[String](classOf[String], context)(body))
+  def appendBody(body: Any)(implicit mgnt: ContextMgnt) =
+    setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
 
   def transformBody[A](transformer: A => Any) =
     setBody(transformer(body.asInstanceOf[A]))
