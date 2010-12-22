@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import org.apache.camel.{CamelContext, Processor}
+import org.apache.camel.Processor
 
 import scalaz._
 
@@ -67,8 +67,8 @@ trait CamelConv {
    * Converts a Camel endpoint defined by <code>uri</code> to a <code>MessageProcessorKleisli</code>
    * for producing to that endpoint.
    */
-  implicit def uriStringToMessageProcessorKleisli(uri: String)(implicit context: CamelContext): MessageProcessorKleisli =
-    kleisliProcessor(messageProcessor(uri, context))
+  implicit def uriStringToMessageProcessorKleisli(uri: String)(implicit mgnt: EndpointMgnt): MessageProcessorKleisli =
+    kleisliProcessor(messageProcessor(uri, mgnt))
 
   implicit def messageProcessorKleisliToMessageProcessor(p: MessageProcessorKleisli): MessageProcessor =
     (m: Message) => p apply m
@@ -111,14 +111,6 @@ trait CamelConv {
     }
   }
 
-  private[camel] def messageProcessor(uri: String, context: CamelContext): MessageProcessor = {
-    val endpoint = context.getEndpoint(uri)
-    val producer = endpoint.createProducer
-
-    // TODO: manage producer (and do not start producer during route construction)
-    // ...
-
-    producer.start
-    messageProcessor(producer)
-  }
+  private[camel] def messageProcessor(uri: String, mgnt: EndpointMgnt): MessageProcessor =
+    messageProcessor(mgnt.createProducer(uri))
 }

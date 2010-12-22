@@ -26,9 +26,11 @@ import org.scalatest.matchers.MustMatchers
  * @author Martin Krasser
  */
 class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
-  implicit val context = new DefaultCamelContext
+  implicit val router = new ContextMgnt {
+    val context = new DefaultCamelContext
+  }
 
-  override protected def beforeAll = context.start
+  override protected def beforeAll = router.start
 
   def support = afterWord("support")
 

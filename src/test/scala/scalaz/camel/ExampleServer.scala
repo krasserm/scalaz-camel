@@ -19,21 +19,19 @@ import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
 
 import scalaz._
+import org.apache.camel.component.direct.DirectComponent
+import org.apache.camel.impl.DefaultComponent
 
 /**
  * @author Martin Krasser
  */
 object ExampleServerContext extends ExampleSupport {
-  import org.apache.camel.impl.DefaultCamelContext
-  import org.apache.camel.spring.spi.ApplicationContextRegistry
-  import org.springframework.context.support.ClassPathXmlApplicationContext
+  import org.apache.camel.spring.SpringCamelContext._
 
-  val appctx = new ClassPathXmlApplicationContext("/context-jms.xml")
-  val registry = new ApplicationContextRegistry(appctx)
-
-  implicit val context = new DefaultCamelContext(registry)
-
+  val context = springCamelContext("/context.xml")
   val template = context.createProducerTemplate
+
+  implicit val router = new Router(context)
 }
 
 /**
@@ -45,10 +43,9 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
 
   import ExampleServerContext._
 
-  override def beforeAll = context.start
+  override def beforeAll = router.start
+  override def afterAll = router.stop
   override def afterEach = mock.reset
-
-  def mock = context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
 
   def support = afterWord("support")
 
@@ -100,4 +97,6 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
       mock.assertIsSatisfied
     }
   }
+
+  def mock = router.context.getEndpoint("mock:mock", classOf[org.apache.camel.component.mock.MockEndpoint])
 }
