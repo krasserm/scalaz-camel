@@ -25,6 +25,10 @@ import org.apache.camel.{CamelContext, Exchange, Message => CamelMessage}
  * @author Martin Krasser
  */
 case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
+
+  // TODO: make Message a parameterized type
+  // TODO: make Message an instance of Functor
+
   val ExceptionHeader = "scalaz.camel.exception"
   val exchange: Option[Exchange] = None
 
@@ -58,9 +62,11 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   def bodyAs[A](implicit m: Manifest[A], mgnt: ContextMgnt): A =
     convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body)
 
+  // TODO: remove once Message is a Functor
   def appendBody(body: Any)(implicit mgnt: ContextMgnt) =
     setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
 
+  // TODO: remove once Message is a Functor
   def transformBody[A](transformer: A => Any) =
     setBody(transformer(body.asInstanceOf[A]))
   

@@ -294,5 +294,24 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
       def createMessage(body: Any)(implicit mgnt: ContextMgnt) =
         Message(body).setExchange(new DefaultExchange(mgnt.context))
     }
+
+    "usage of Kleisli routes inside message processors" in {
+      val nested1 = kleisliProcessor {
+        (msg: Message) => appendString("-n1") >=> appendString("-n2") apply msg
+      }
+
+      val nested2 = (msg: Message) => {
+        appendString("-n3") >=> appendString("-n4") apply msg match {
+          case Success(m) => m
+          case Failure(e) => throw e
+        }
+      }
+
+      from("direct:test-70") route {
+         nested1 >=> nested2
+      }
+
+      template.requestBody("direct:test-70", "test") must equal("test-n1-n2-n3-n4")
+    }
   }
 }
