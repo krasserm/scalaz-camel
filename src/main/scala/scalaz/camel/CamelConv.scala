@@ -27,14 +27,16 @@ import scalaz._
  * @author Martin Krasser
  */
 trait CamelConv {
+  import concurrent.Promise
+  import concurrent.Strategy
   import Scalaz._
   import Message._
 
   /**
-   * The monad used for Kleisli composition. This monad ensures that message processors
+   * Type of the monad used for Kleisli composition. Kleisli functions returning
    * <ul>
-   *   <li>returning Failure(exception) cause a Kleisli-composed route to stop message processing</li>
-   *   <li>returning Success(message) cause a Kleisli-composed route to continue message processing</li>
+   *   <li>Failure(exception) cause a Kleisli-composed route to stop message processing</li>
+   *   <li>Success(message) cause a Kleisli-composed route to continue message processing</li>
    * </ul>
    */
   type ValidationMonad[B] = PartialApply1Of2[Validation, Exception]#Apply[B]
@@ -48,7 +50,7 @@ trait CamelConv {
   /** Function that combines two messages into into one */
   type MessageAggregator = (Message, Message) => Message
 
-  /** Needed to use ValidationMonad as applicative functor */
+  /** Semigroup to append exceptions. Returns the first exception and ignores the second */
   implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
 
   /**
@@ -73,6 +75,9 @@ trait CamelConv {
   implicit def messageProcessorKleisliToMessageProcessor(p: MessageProcessorKleisli): MessageProcessor =
     (m: Message) => p apply m
 
+  def promiseFunction(p: MessageProcessor)(implicit s: Strategy) =
+    kleisliFn[Promise, Message, Validation[Exception, Message]](p.promise(s))
+
   def kleisliFunction(p: MessageProcessorKleisli) =
     kleisliFn[ValidationMonad, Message, Message](p)
 
@@ -88,23 +93,23 @@ trait CamelConv {
   }
 
   private[camel] def messageProcessor(p: Processor): MessageProcessor = (m: Message) => {
-    // TODO: operate on a copy of m.exchange otherwise processors could modify the shared exchange
     val me = m.exchange.getOrElse(throw new IllegalArgumentException("Message exchange not set"))
+    val ce = me.copy
 
     // pre-process exchange
-    me.getIn.fromMessage(m)
-    me.setOut(null)
+    ce.getIn.fromMessage(m)
+    ce.setOut(null)
 
     try {
-      p.process(me)
-      if (me.isFailed) {
-        me.getException.fail
+      p.process(ce)
+      if (ce.isFailed) {
+        ce.getException.fail
       } else {
-        val rm = if (me.hasOut) me.getOut else me.getIn
+        val rm = if (ce.hasOut) ce.getOut else ce.getIn
         // post-process exchange
-        me.setOut(null)
-        me.setIn(rm)
-        rm.toMessage.success
+        ce.setOut(null)
+        ce.setIn(rm)
+        rm.toMessage.setExchange(ce).success
       }
     } catch {
       case e: Exception => e.fail

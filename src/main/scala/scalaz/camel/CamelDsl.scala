@@ -20,13 +20,22 @@ import org.apache.camel.{Exchange, Processor}
 import scalaz._
 
 /**
- * Domain-specific language (DSL) focused on creating message processing routes via Kleisli
- * composition. Provides additional combinators representing enterprise integration patterns
- * (EIPs) such as content-based router or recipient-list.
+ * Domain-specific language (DSL) focused on creating message processing routes. Message processing routes
+ * consist of processors that depend on each other but may also have processors (or sub-routes) that are
+ * independent of each other and can therefore be run concurrently.
+ * <ul>
+ * <li>Dependent message processors are combined via Kleisli composition. The result of one processor
+ * is fed into the next processor i.e. Kleisli composition defines a message processing sequence</li>
+ * <li>Independent message processors can be combined for parallel execution via <code>multicast</code>.
+ * Independent message processors can be single processors but also complete message processing routes.</li>
+ * </ul>
+ * <code>CamelDsl</code> also defines combinators that represent enterprise integration patterns (EIPs) such
+ * as content-based router or recipient-list.
  *
  * @author Martin Krasser
  */
 trait CamelDsl extends CamelConv {
+  import concurrent.Strategy
   import Scalaz._
   import Message._
 
@@ -38,17 +47,18 @@ trait CamelDsl extends CamelConv {
   def choose(f: PartialFunction[Message, MessageProcessorKleisli]) =
     kleisli[ValidationMonad, Message, Message]((m: Message) => f(m) apply m)
 
-  /** The multicast EIP */
-  def multicast(destinations: MessageProcessorKleisli*)(aggregator: MessageAggregator): MessageProcessorKleisli =
+  /** The recipient list EIP */
+  def multicast(destinations: MessageProcessorKleisli*)(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessorKleisli =
     kleisliProcessor((msg: Message) => {
-        // apply all destination routes to the given message and store the results as list
-        val results = msg.pure[List] <*> destinations.toList ∘ kleisliFunction
-        // aggregate the results by folding over the list and return
-        // - the aggregated message if all applications were successful i.e. Success(message)
-        // - return the first exception if one or more applications failed i.e. Failure(exception)
-        results.tail.foldLeft(results.head) { (z, m) => m <*> z ∘ aggregator.curried }
-      }
-    )
+      // convert destinations to concurrent routes and run them using given concurrency strategy (s)
+      val vsPromise = (msg.pure[List] <*> destinations.toList ∘ (kleisliFunction(_)) ∘ (promiseFunction(_)(s))).sequence
+      // fold over the (promised) list of Validation[Exception, Message] values
+      // * for Success(message) values the aggregator function is used
+      // * for Failure(exception) values the ExceptionSemigroup is used (implicitly)
+      vsPromise.map(vs => vs.tail.foldLeft(vs.head) {
+        (z, m) => m <*> z ∘ aggregator.curried
+      }).get
+    })
 
   // ------------------------------------------
   //  DSL (route initiation)

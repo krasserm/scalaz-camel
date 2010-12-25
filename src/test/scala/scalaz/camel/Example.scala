@@ -106,6 +106,10 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
     }
 
     "Kleisli routes with multicast combinator" in {
+      // parallel multicast with creation
+      // of a new thread per destination
+      import concurrent.Strategy.Naive
+
       val aggregator = (m1: Message, m2: Message) => m1.appendBody(" --- %s" format m2.body)
 
       from("direct:test-10") route {
