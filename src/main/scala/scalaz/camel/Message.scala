@@ -63,6 +63,10 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
     convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body)
 
   // TODO: remove once Message is a Functor
+  def bodyTo[A](implicit m: Manifest[A], mgnt: ContextMgnt): Message =
+    Message(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body), headers, exchange)
+
+  // TODO: remove once Message is a Functor
   def appendBody(body: Any)(implicit mgnt: ContextMgnt) =
     setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
 

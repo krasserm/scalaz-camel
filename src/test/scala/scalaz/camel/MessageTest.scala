@@ -37,7 +37,9 @@ class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
   "A message" must support {
     "body conversion to a specified type" in {
       Message(1.4).bodyAs[String] must equal("1.4")
+      Message(1.4).bodyTo[String].body must equal("1.4")
       evaluating { Message(1.4).bodyAs[InputStream] } must produce [NoTypeConversionAvailableException]
+      evaluating { Message(1.4).bodyTo[InputStream] } must produce [NoTypeConversionAvailableException]
     }
 
     "header conversion to a specified type" in {
