@@ -19,8 +19,6 @@ import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
 
 import scalaz._
-import org.apache.camel.component.direct.DirectComponent
-import org.apache.camel.impl.DefaultComponent
 
 /**
  * @author Martin Krasser
@@ -51,7 +49,7 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
 
   "scalaz-camel" should support {
 
-    "communication of http endpoints" in {
+    "communication with http endpoints" in {
       from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {
         appendString("-1") >=> appendString("-2")
       }
@@ -63,7 +61,7 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
       template.requestBody("direct:server-test-http", "hello") must equal("hello-1-2 done")
     }
 
-    "communication of jms endpoints" in {
+    "communication with jms endpoints" in {
       from("jms:queue:scalaz-camel-test") route {
         appendString("-1") >=> appendString("-2") >=> logMessage >=> "mock:mock"
       }
