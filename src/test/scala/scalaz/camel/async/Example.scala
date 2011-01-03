@@ -33,7 +33,7 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
 
   def support = afterWord("support")
 
-  "scalaz-camel" should support {
+  "scalaz.camel.async.Camel" should support {
     "non-blocking routing with asynchronous functions that report success" in {
       from("direct:test-1") route {
         asyncAppendString("-1") >=> asyncAppendString("-2")
@@ -85,6 +85,34 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
         template.requestBody("direct:test-10", "b")
       } catch {
         case e => e.getCause.getMessage must equal("failed")
+      }
+    }
+
+    "sending messages to a list of recipients that all succeed" in {
+      val aggregator = (m1: Message, m2: Message) => m1.appendBody(" - %s" format m2.body)
+
+      from("direct:test-11") route {
+        asyncAppendString("-1") >=> multicast(
+          asyncAppendString("-a") >=> asyncAppendString("-b"),
+          asyncAppendString("-c") >=> asyncAppendString("-d")
+        ) { aggregator } >=> asyncAppendString(" done")
+      }
+      template.requestBody("direct:test-11", "a") must equal("a-1-a-b - a-1-c-d done")
+    }
+
+    "sending messages to a list of recipients that fail" in {
+      val aggregator = (m1: Message, m2: Message) => m1.appendBody(" - %s" format m2.body)
+
+      from("direct:test-12") route {
+        asyncAppendString("-1") >=> multicast(
+          asyncAppendString("-a") >=> asyncFailWith("oops1"),
+          asyncFailWith("oops2")  >=> asyncAppendString("-d")
+        ) { aggregator } >=> asyncAppendString(" done")
+      }
+      try {
+        template.requestBody("direct:test-12", "a")
+      } catch {
+        case e => e.getCause.getMessage must equal("oops1")
       }
     }
   }

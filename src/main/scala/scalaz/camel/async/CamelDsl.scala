@@ -13,6 +13,8 @@ import scalaz.camel.{Message, EndpointMgnt}
  * @see scalaz.camel.async.Camel
  */
 trait CamelDsl extends CamelConv {
+  import concurrent.Promise
+  import concurrent.Strategy
   import Scalaz._
   import Message._
 
@@ -37,6 +39,36 @@ trait CamelDsl extends CamelConv {
       }
     )
 
+  /** The recipient-list EIP */
+  def multicast(destinations: MessageProcessorKleisli*)(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessorKleisli =
+    kleisli[Responder, MessageValidation, MessageValidation](
+      (mv: MessageValidation) => mv match {
+        case Failure(e) =>  new MessageResponder(Failure(e), null) // 2nd arg won't be evaluated
+        case Success(m) =>  new MessageResponder(Success(m), multicast(destinations.toList)(aggregator))
+      }
+    )
+
+  private def multicast(destinations: List[MessageProcessorKleisli])(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => {
+      // obtain a promise for a list of MessageValidation values
+      val vsPromise = (m.pure[List] <*> destinations ∘ validationFunction ∘ (promiseFunction(_)(s))).sequence
+      // combine promised success messages into single message or return first failure
+      k(vsPromise.map(vs => vs.tail.foldLeft(vs.head) {
+        (z, m) => m <*> z ∘ aggregator.curried
+      }).get /* here we need to block */)
+    }
+
+  private def validationFunction(p: MessageProcessorKleisli): Message => MessageValidation = (m: Message) => {
+    val latch = new java.util.concurrent.CountDownLatch(1)
+    var result: MessageValidation = null
+    p apply m.success respond { mv => result = mv; latch.countDown }
+    latch.await  // TODO: improve
+    result
+  }
+
+  private def promiseFunction(p: Message => MessageValidation)(implicit s: Strategy) =
+    kleisliFn[Promise, Message, MessageValidation](p.promise(s))
+
   // ------------------------------------------
   //  DSL (route initiation)
   // ------------------------------------------
@@ -53,51 +85,32 @@ trait CamelDsl extends CamelConv {
 
   trait ErrorRouteDefinition
 
-  // ------------------------------------------
-  //  Internal
-  // ------------------------------------------
-
-  private class RouteProcessor(p: MessageProcessorKleisli) extends AsyncProcessor { this: ErrorRouteDefinition =>
+  class RouteProcessor(p: MessageProcessorKleisli) extends AsyncProcessor { this: ErrorRouteDefinition =>
     def process(exchange: Exchange, callback: AsyncCallback) = {
-
-      // Not sure if we need to find out whether we'll receive an async or sync callback.
-      // For example, the CamelContinuationServlet (used by Jetty component) doesn't care
-      // (i.e. ignores return values from AsyncProcessor#process and the doneSync parameter
-      // of AsyncCallback#done)
-
-      val sync = false
-
       p apply exchange.getIn.toMessage.success respond { mv: MessageValidation =>
         mv match {
           case Failure(e) => {
             exchange.setException(e)
-            callback.done(sync)
+            callback.done(false)
           }
           case Success(m) => {
             exchange.getIn.fromMessage(m)
             exchange.getOut.fromMessage(m)
-            callback.done(sync)
+            callback.done(false)
           }
         }
       }
-      sync
+      false
     }
 
     def process(exchange: Exchange) = {
-
-      //
-      // TODO: improve
-      //
-
       val latch = new CountDownLatch(1)
-
       process(exchange, new AsyncCallback() {
         def done(doneSync: Boolean) = {
           latch.countDown
         }
       })
-
-      latch.await
+      latch.await // TODO: improve
     }
   }
 }

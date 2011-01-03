@@ -47,7 +47,7 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
 
   def support = afterWord("support")
 
-  "scalaz-camel" should support {
+  "scalaz.camel.Camel" should support {
 
     "communication with http endpoints" in {
       from("jetty:http://0.0.0.0:8865/scalaz/camel/test") route {

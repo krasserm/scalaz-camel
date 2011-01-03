@@ -26,7 +26,7 @@ class ExampleSetup extends WordSpec with MustMatchers with BeforeAndAfterAll wit
 
   override def afterAll = router.stop
 
-  "scalaz-camel" when {
+  "scalaz.camel.Camel" when {
     "given an implicit router that has not been started" must {
       "allow setup of routes" in {
         from("direct:test-1") route {

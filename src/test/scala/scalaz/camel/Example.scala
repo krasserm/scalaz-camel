@@ -54,7 +54,7 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
 
   def support = afterWord("support")
 
-  "scalaz-camel" should support {
+  "scalaz.camel.Camel" should support {
 
     "route construction via Kleisli composition" in {
       // route created from Kleisli composition of Camel processors

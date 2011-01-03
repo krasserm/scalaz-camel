@@ -6,6 +6,4 @@ package scalaz.camel.async
  *
  * @author Martin Krasser
  */
-object Camel extends CamelDsl {
-
-}
+object Camel extends CamelDsl

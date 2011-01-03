@@ -23,6 +23,7 @@ trait CamelConv {
   // ----------------------------------------------------------------------------------------------
 
   type MessageValidation = Validation[Exception, Message]
+  type MessageAggregator = (Message, Message) => Message
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
   type MessageProcessorKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
 
@@ -49,6 +50,9 @@ trait CamelConv {
   implicit def uriStringToMessageProcessorKleisli(uri: String)(implicit mgnt: EndpointMgnt): MessageProcessorKleisli =
     kleisliProcessor(messageProcessor(uri, mgnt))
 
+  /** Semigroup to append exceptions. Returns the first exception and ignores the second */
+  implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
+
   //
   // factory methods for MessageProcessorKleisli
   //
@@ -57,20 +61,20 @@ trait CamelConv {
     kleisli((v: MessageValidation) => new MessageResponder(v, p).map(r => r))
 
   // 
-  // factory methods for MessageProcessor (TODO: move to companion object)
+  // factory methods for MessageProcessor
   //
 
   protected def messageProcessor(p: MessageProcessorKleisli): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => p apply m.success respond k
 
-  private def messageProcessor(uri: String, mgnt: EndpointMgnt): MessageProcessor =
+  protected def messageProcessor(uri: String, mgnt: EndpointMgnt): MessageProcessor =
     messageProcessor(mgnt.createProducer(uri))
 
-  private def messageProcessor(p: Processor): MessageProcessor =
+  protected def messageProcessor(p: Processor): MessageProcessor =
     if (p.isInstanceOf[AsyncProcessor]) messageProcessor(p.asInstanceOf[AsyncProcessor])
     else messageProcessor(new ProcessorAdapter(p))
 
-  private def messageProcessor(p: AsyncProcessor): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
+  protected def messageProcessor(p: AsyncProcessor): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
     val me = m.exchange.getOrElse(throw new IllegalArgumentException("Message exchange not set"))
     val ce = me.copy
 
@@ -80,7 +84,7 @@ trait CamelConv {
     p.process(ce, new CallbackHandler(ce, k))
   }
 
-  private def messageProcessor(p: Message => Message): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
+  protected def messageProcessor(p: Message => Message): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
     try {
       k(p(m).success)
     } catch {

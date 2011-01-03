@@ -36,7 +36,7 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
 
   def support = afterWord("support")
 
-  "scalaz-camel" should support {
+  "scalaz.camel.async.Camel" should support {
     "non-blocking routing with asynchronous endpoints" in {
 
       // non-blocking server route using
