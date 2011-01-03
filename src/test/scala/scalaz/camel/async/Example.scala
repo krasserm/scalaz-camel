@@ -57,5 +57,19 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
         case e => e.getCause.getMessage must equal("blah")
       }
     }
+
+    "routing with both asynchronous and synchronous functions" in {
+      from("direct:test-4") route {
+        asyncAppendString("-1") >=> syncAppendString("-2")
+      }
+      template.requestBody("direct:test-4", "test") must equal("test-1-2")
+    }
+
+    "routing with both asynchronous Camel processors that report success" in {
+      from("direct:test-5") route {
+        asyncRepeatBody >=> syncRepeatBody
+      }
+      template.requestBody("direct:test-5", "x") must equal("xxxx")
+    }
   }
 }

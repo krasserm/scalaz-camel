@@ -1,6 +1,6 @@
 package scalaz.camel.async
 
-import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange}
+import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
 
 import scalaz.camel.ContextMgnt
 import scalaz.camel.Message
@@ -16,19 +16,23 @@ trait ExampleSupport {
   import Camel.MessageValidation
   import Camel.MessageProcessor
 
-  // asynchronous message processor that fails with given error message
+  // ----------------------------------------
+  //  Asynchronous message processors
+  // ----------------------------------------
+
+  // Fails with given error message
   def asyncFailWith(em: String)(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => strategy.apply(k(new Exception(em).fail))
 
-  // asynchronous message processor that appends s to message body
+  // Appends s to message body
   def asyncAppendString(s: String)(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => strategy.apply(k(m.appendBody(s).success))
 
-  // asynchronous message processor that converts message body to String
+  // Converts message body to String
   def asyncConvertToString(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => strategy.apply(k(m.bodyTo[String].success))
 
-  // asynchronous message processor (Camel interface) that repeats message body
+  //  Repeats message body (Camel interface)
   def asyncRepeatBody(implicit strategy: Strategy) = new AsyncProcessor() {
     def process(exchange: Exchange) = throw new UnsupportedOperationException
     def process(exchange: Exchange, callback: AsyncCallback) = {
@@ -38,6 +42,21 @@ trait ExampleSupport {
         callback.done(false)
       }
       false
+    }
+  }
+
+  // ----------------------------------------
+  //  Synchronous message processors
+  // ----------------------------------------
+
+  // Appends s to message body
+  def syncAppendString(s: String)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendBody(s)
+
+  //  Repeats message body (Camel interface)
+  def syncRepeatBody = new Processor() {
+    def process(exchange: Exchange) = {
+      val body = exchange.getIn.getBody(classOf[String])
+      exchange.getIn.setBody(body + body)
     }
   }
 }

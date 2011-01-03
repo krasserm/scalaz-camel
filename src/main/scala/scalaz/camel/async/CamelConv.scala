@@ -1,6 +1,6 @@
 package scalaz.camel.async
 
-import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange}
+import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
 
 import scalaz._
 import scalaz.camel.{Message, EndpointMgnt}
@@ -40,7 +40,10 @@ trait CamelConv {
   implicit def messageProcessorFunctionToMessageProcessorKleisli(p: MessageProcessor): MessageProcessorKleisli =
     kleisliProcessor(p)
 
-  implicit def messageMessageProcessorToMessageProcessorKleisli(p: AsyncProcessor): MessageProcessorKleisli =
+  implicit def messageProcessorFunctionToMessageProcessorKleisli(p: Message => Message): MessageProcessorKleisli =
+    kleisliProcessor(messageProcessor(p))
+
+  implicit def messageMessageProcessorToMessageProcessorKleisli(p: Processor): MessageProcessorKleisli =
     kleisliProcessor(messageProcessor(p))
 
   implicit def uriStringToMessageProcessorKleisli(uri: String)(implicit mgnt: EndpointMgnt): MessageProcessorKleisli =
@@ -58,30 +61,48 @@ trait CamelConv {
   //
 
   private def messageProcessor(uri: String, mgnt: EndpointMgnt): MessageProcessor =
-    messageProcessor(mgnt.createProducer(uri).asInstanceOf[AsyncProcessor]) // TODO: handle ClassCastExceptions
+    messageProcessor(mgnt.createProducer(uri))
+
+  private def messageProcessor(p: Processor): MessageProcessor =
+    if (p.isInstanceOf[AsyncProcessor]) messageProcessor(p.asInstanceOf[AsyncProcessor])
+    else messageProcessor(new ProcessorAdapter(p))
 
   private def messageProcessor(p: AsyncProcessor): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
-
-    //
-    // TODO: accept Processor as well
-    //       - if instance of AsyncProcessor ...
-    //       - if instance of Processor then wait for processing is done
-    //
-
     val me = m.exchange.getOrElse(throw new IllegalArgumentException("Message exchange not set"))
     val ce = me.copy
 
     ce.getIn.fromMessage(m)
     ce.setOut(null)
 
-    p.process(ce, new Handler(ce, k))
+    p.process(ce, new CallbackHandler(ce, k))
+  }
+
+  private def messageProcessor(p: Message => Message): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
+    try {
+      k(p(m).success)
+    } catch {
+      case e: Exception => k(e.fail)
+    }
   }
 
   //
   // Other
   //
 
-  private class Handler(me: Exchange, k: MessageValidation => Unit) extends AsyncCallback {
+  private class ProcessorAdapter(p: Processor) extends AsyncProcessor {
+    def process(exchange: Exchange) = throw new UnsupportedOperationException()
+    def process(exchange: Exchange, callback: AsyncCallback) = {
+      try {
+        p.process(exchange)
+      } catch {
+        case e: Exception => exchange.setException(e)
+      }
+      callback.done(true)
+      true
+    }
+  }
+
+  private class CallbackHandler(me: Exchange, k: MessageValidation => Unit) extends AsyncCallback {
     def done(doneSync: Boolean) =
       if (me.isFailed) k(me.getException.fail)
       else k(resultMessage(me).success)
