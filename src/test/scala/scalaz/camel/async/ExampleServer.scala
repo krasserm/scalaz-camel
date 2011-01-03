@@ -43,14 +43,14 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
       // - Jetty-continuation enabled endpoint and
       // - asynchronous message processors
       from("jetty:http://localhost:8766/test") route {
-        convertToStringAsync >=> repeatBodyAsync
+        asyncConvertToString >=> asyncRepeatBody
       }
 
       // non-blocking client route using
       // - asynchronous Jetty HTTP client and
       // - asynchronous message processor
       from("direct:test-1") route {
-        "jetty:http://localhost:8766/test" >=> appendStringAsync("-done")
+        "jetty:http://localhost:8766/test" >=> asyncAppendString("-done")
       }
 
       template.requestBody("direct:test-1", "test") must equal("testtest-done")

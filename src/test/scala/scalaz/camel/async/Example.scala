@@ -33,18 +33,29 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
   def support = afterWord("support")
 
   "scalaz-camel" should support {
-    "non-blocking routing with asynchronous functions" in {
+    "non-blocking routing with asynchronous functions that report success" in {
       from("direct:test-1") route {
-        appendStringAsync("-1") >=> appendStringAsync("-2")
+        asyncAppendString("-1") >=> asyncAppendString("-2")
       }
       template.requestBody("direct:test-1", "test") must equal("test-1-2")
     }
 
-    "non-blocking routing with asynchronous Camel processors" in {
+    "non-blocking routing with asynchronous Camel processors that report success" in {
       from("direct:test-2") route {
-        repeatBodyAsync >=> repeatBodyAsync
+        asyncRepeatBody >=> asyncRepeatBody
       }
       template.requestBody("direct:test-2", "x") must equal("xxxx")
+    }
+
+    "non-blocking routing with asynchronous functions that report failure" in {
+      from("direct:test-3") route {
+        asyncFailWith("blah") >=> asyncRepeatBody
+      }
+      try {
+        template.requestBody("direct:test-3", "testZ")
+      } catch {
+        case e => e.getCause.getMessage must equal("blah")
+      }
     }
   }
 }
