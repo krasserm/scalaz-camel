@@ -4,6 +4,7 @@ import org.scalatest.{WordSpec, BeforeAndAfterAll}
 import org.scalatest.matchers.MustMatchers
 
 import scalaz._
+import scalaz.camel.Message
 
 /**
  * @author Martin Krasser
@@ -70,6 +71,21 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
         asyncRepeatBody >=> syncRepeatBody
       }
       template.requestBody("direct:test-5", "x") must equal("xxxx")
+    }
+
+    "non-blocking content-based routing" in {
+      from("direct:test-10") route {
+        asyncAppendString("-1") >=> choose {
+          case Message("a-1", _) => asyncAppendString("-a") >=> asyncAppendString("-b")
+          case Message("b-1", _) => asyncFailWith("failed") >=> asyncAppendString("-d")
+        } >=> asyncAppendString("-2")
+      }
+      template.requestBody("direct:test-10", "a") must equal("a-1-a-b-2")
+      try {
+        template.requestBody("direct:test-10", "b")
+      } catch {
+        case e => e.getCause.getMessage must equal("failed")
+      }
     }
   }
 }

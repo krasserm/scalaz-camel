@@ -25,6 +25,19 @@ trait CamelDsl extends CamelConv {
   // ----------------------------------------------------------------------------------------------
 
   // ------------------------------------------
+  //  DSL (EIPs)
+  // ------------------------------------------
+
+  /** The content-based router EIP */
+  def choose(f: PartialFunction[Message, MessageProcessorKleisli]): MessageProcessorKleisli =
+    kleisli[Responder, MessageValidation, MessageValidation](
+      (mv: MessageValidation) => mv match {
+        case Failure(e) =>  new MessageResponder(Failure(e), null) // 2nd arg won't be evaluated
+        case Success(m) =>  new MessageResponder(Success(m), messageProcessor(f(m)))
+      }
+    )
+
+  // ------------------------------------------
   //  DSL (route initiation)
   // ------------------------------------------
 

@@ -26,7 +26,7 @@ trait CamelConv {
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
   type MessageProcessorKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
 
-  class MessageResponder(p: MessageProcessor, v: MessageValidation) extends Responder[MessageValidation] {
+  class MessageResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
     def respond(k: (MessageValidation) => Unit) = v match {
       case Success(m) => p(m, r => k(r))
       case Failure(e) => k(Failure(e))
@@ -54,11 +54,14 @@ trait CamelConv {
   //
 
   def kleisliProcessor(p: MessageProcessor): MessageProcessorKleisli =
-    kleisli((v: MessageValidation) => new MessageResponder(p, v).map(r => r))
+    kleisli((v: MessageValidation) => new MessageResponder(v, p).map(r => r))
 
   // 
-  // factory methods for MessageProcessor
+  // factory methods for MessageProcessor (TODO: move to companion object)
   //
+
+  protected def messageProcessor(p: MessageProcessorKleisli): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => p apply m.success respond k
 
   private def messageProcessor(uri: String, mgnt: EndpointMgnt): MessageProcessor =
     messageProcessor(mgnt.createProducer(uri))
