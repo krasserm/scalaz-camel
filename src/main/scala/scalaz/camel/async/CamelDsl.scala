@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
 
 import scalaz._
-import scalaz.camel.{Message, EndpointMgnt}
+import scalaz.camel.{Message, ContextMgnt, EndpointMgnt}
 
 /**
  * @author Martin Krasser
@@ -59,11 +59,9 @@ trait CamelDsl extends CamelConv {
     }
 
   private def validationFunction(p: MessageProcessorKleisli): Message => MessageValidation = (m: Message) => {
-    val latch = new java.util.concurrent.CountDownLatch(1)
-    var result: MessageValidation = null
-    p apply m.success respond { mv => result = mv; latch.countDown }
-    latch.await  // TODO: improve
-    result
+    val exchr = new java.util.concurrent.Exchanger[MessageValidation]
+    p apply m.success respond { mv => exchr.exchange(mv) }
+    exchr.exchange(null)
   }
 
   private def promiseFunction(p: Message => MessageValidation)(implicit s: Strategy) =
@@ -76,26 +74,62 @@ trait CamelDsl extends CamelConv {
   def from(uri: String) = new MainRouteDefinition(uri)
 
   class MainRouteDefinition(uri: String) {
-    def route(r: MessageProcessorKleisli)(implicit mgnt: EndpointMgnt): ErrorRouteDefinition = {
-      val processor = new RouteProcessor(r) with ErrorRouteDefinition
-      val consumer = mgnt.createConsumer(uri, processor)
+    def route(r: MessageProcessorKleisli)(implicit emgnt: EndpointMgnt, cmgnt: ContextMgnt): ErrorRouteDefinition = {
+      val processor = new RouteProcessor(r, cmgnt) with ErrorRouteDefinition
+      val consumer = emgnt.createConsumer(uri, processor)
       processor
     }
   }
 
-  trait ErrorRouteDefinition
+  trait ErrorRouteDefinition {
+    import collection.mutable.Buffer
 
-  class RouteProcessor(p: MessageProcessorKleisli) extends AsyncProcessor { this: ErrorRouteDefinition =>
-    def process(exchange: Exchange, callback: AsyncCallback) = {
-      p apply exchange.getIn.toMessage.success respond { mv: MessageValidation =>
-        mv match {
+    case class ErrorHandler(c: Class[_ <: Exception], r: MessageProcessorKleisli)
+
+    val errorHandlers = Buffer[ErrorHandler]()
+    var errorClass: Class[_ <: Exception] = _
+
+    def route(r: MessageProcessorKleisli) = {
+      errorHandlers append ErrorHandler(errorClass, r)
+      this
+    }
+
+    def onError[A <: Exception](c: Class[A]) = {
+      errorClass = c
+      this
+    }
+  }
+
+  class RouteProcessor(p: MessageProcessorKleisli, mgnt: ContextMgnt) extends AsyncProcessor { this: ErrorRouteDefinition =>
+    def process(exchange: Exchange, callback: AsyncCallback) =
+      route(exchange.getIn.toMessage.cache(mgnt), callback, p, errorHandlers.toList)
+
+    def route(message: Message, callback: AsyncCallback, target: MessageProcessorKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
+      val exchange = message.exchange
+      target apply message.success respond { rv: MessageValidation =>
+        rv match {
           case Failure(e) => {
-            exchange.setException(e)
-            callback.done(false)
+            for (me <- exchange) {
+              me.setException(e)
+              errorHandlers.find(_.c.isInstance(e)) match {
+                case None                     => callback.done(false)
+                case Some(ErrorHandler(_, r)) => {
+                  me.setException(null)
+                  // route original message to error handler
+                  // with the exception set on message header
+                  route(message.reset.setException(e), callback, r, Nil)
+                }
+              }
+            }
           }
           case Success(m) => {
-            exchange.getIn.fromMessage(m)
-            exchange.getOut.fromMessage(m)
+            for (me <- exchange; e <- m.exception) {
+              me.setException(e)
+            }
+            for (me <- exchange) {
+              me.getIn.fromMessage(m)
+              me.getOut.fromMessage(m)
+            }
             callback.done(false)
           }
         }
@@ -110,7 +144,7 @@ trait CamelDsl extends CamelConv {
           latch.countDown
         }
       })
-      latch.await // TODO: improve
+      latch.await
     }
   }
 }

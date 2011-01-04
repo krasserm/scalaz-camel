@@ -110,10 +110,60 @@ class Example extends ExampleSupport with WordSpec with MustMatchers with Before
         ) { aggregator } >=> asyncAppendString(" done")
       }
       try {
-        template.requestBody("direct:test-12", "a")
+        template.requestBody("direct:test-12", "a") must equal ("a-4")
       } catch {
         case e => e.getCause.getMessage must equal("oops1")
       }
+    }
+
+    "error handling with an error handler where exception is handled" in {
+      from("direct:test-20") route {
+        asyncAppendString("-1") >=> asyncFailWith("failure")
+      } onError classOf[Exception] route {
+        asyncAppendString("-2") >=> syncMarkHandled
+      }
+      template.requestBody("direct:test-20", "test") must equal("test-2")
+    }
+
+    "error handling with an error handler where exception is not handled" in {
+      from("direct:test-21") route {
+        asyncAppendString("-1") >=> asyncFailWith("failure")
+      } onError classOf[Exception] route {
+        asyncAppendString("-2")
+      }
+      try {
+        template.requestBody("direct:test-21", "test")
+      } catch {
+        case e => e.getCause.getMessage must equal("failure")
+      }
+    }
+
+    "error handling with an error handler that fails" in {
+      from("direct:test-22") route {
+        asyncAppendString("-1") >=> asyncFailWith("failure")
+      } onError classOf[Exception] route {
+        asyncAppendString("-2") >=> asyncFailWith("error")
+      }
+      try {
+        template.requestBody("direct:test-22", "test")
+      } catch {
+        case e => e.getCause.getMessage must equal("error")
+      }
+    }
+
+    "error handling with several error routes" in {
+      from("direct:test-23") route {
+        asyncAppendString("-1") >=> choose {
+          case Message("a-1", _) => asyncFailWith(new IllegalArgumentException("x"))
+          case Message("b-1", _) => asyncFailWith(new Exception("y"))
+        }
+      } onError classOf[IllegalArgumentException] route {
+        asyncAppendString("-3") >=> syncMarkHandled
+      } onError classOf[Exception] route {
+        asyncAppendString("-4") >=> syncMarkHandled
+      }
+      template.requestBody("direct:test-23", "a") must equal("a-3")
+      template.requestBody("direct:test-23", "b") must equal("b-4")
     }
   }
 }

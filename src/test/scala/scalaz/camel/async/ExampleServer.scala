@@ -55,5 +55,15 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
 
       template.requestBody("direct:test-1", "test") must equal("testtest-done")
     }
+
+    "caching of input streams for using original message in error handlers" in {
+      from("jetty:http://localhost:8761/test") route {
+        asyncConvertToString >=> asyncFailWith("failure")
+      } onError classOf[Exception] route {
+        asyncConvertToString >=> asyncAppendString("-handled") >=> syncMarkHandled
+      }
+      
+      template.requestBody("http://localhost:8761/test", "test", classOf[String]) must equal ("test-handled")
+    }
   }
 }

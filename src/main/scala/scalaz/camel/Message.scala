@@ -73,9 +73,21 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   // TODO: remove once Message is a Functor
   def transformBody[A](transformer: A => Any) =
     setBody(transformer(body.asInstanceOf[A]))
-  
+
+  import java.io.{ByteArrayInputStream => BAIS, InputStream => IS}
+
+  // Experimental
+  private[camel] def cache(implicit mgnt: ContextMgnt) = if (body.isInstanceOf[IS]) bodyTo[BAIS] else this
+
+  // Experimental
+  private[camel] def reset = if (body.isInstanceOf[BAIS]) resetStream(body.asInstanceOf[BAIS]) else this
+
   private def convertTo[A](c: Class[A], context: CamelContext)(a: Any): A =
     context.getTypeConverter.mandatoryConvertTo[A](c, a)
+
+  private def resetStream(s: java.io.ByteArrayInputStream) = {
+    s.reset; this
+  }
 }
 
 /**

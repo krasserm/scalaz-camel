@@ -22,7 +22,11 @@ trait ExampleSupport {
 
   // Fails with given error message
   def asyncFailWith(em: String)(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
-    (m: Message, k: MessageValidation => Unit) => strategy.apply(k(new Exception(em).fail))
+    asyncFailWith(new Exception(em))
+
+  // Fails with given exception
+  def asyncFailWith(e: Exception)(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => strategy.apply(k(e.fail))
 
   // Appends s to message body
   def asyncAppendString(s: String)(implicit strategy: Strategy, mgnt: ContextMgnt): MessageProcessor =
@@ -48,6 +52,9 @@ trait ExampleSupport {
   // ----------------------------------------
   //  Synchronous message processors
   // ----------------------------------------
+
+  // Marks an exception as handled for a message
+  val syncMarkHandled = (msg: Message) => msg.exceptionHandled
 
   // Appends s to message body
   def syncAppendString(s: String)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendBody(s)
