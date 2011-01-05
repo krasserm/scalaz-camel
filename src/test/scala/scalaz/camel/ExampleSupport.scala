@@ -1,9 +1,6 @@
-package scalaz.camel.async
+package scalaz.camel
 
 import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
-
-import scalaz.camel.ContextMgnt
-import scalaz.camel.Message
 
 import scalaz._
 

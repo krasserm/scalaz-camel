@@ -1,11 +1,10 @@
-package scalaz.camel.async
+package scalaz.camel
 
 import java.util.concurrent.CountDownLatch
 
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
 
 import scalaz._
-import scalaz.camel.{Message, ContextMgnt, EndpointMgnt}
 
 /**
  * @author Martin Krasser

@@ -1,10 +1,9 @@
-package scalaz.camel.async
+package scalaz.camel
 
 import org.scalatest.{WordSpec, BeforeAndAfterAll}
 import org.scalatest.matchers.MustMatchers
 
 import scalaz._
-import scalaz.camel.Message
 
 /**
  * @author Martin Krasser
