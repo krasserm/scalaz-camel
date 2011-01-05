@@ -46,9 +46,6 @@ trait CamelConv {
   implicit def messageMessageProcessorToMessageProcessorKleisli(p: Processor): MessageProcessorKleisli =
     kleisliProcessor(messageProcessor(p))
 
-  implicit def uriStringToMessageProcessorKleisli(uri: String)(implicit mgnt: EndpointMgnt): MessageProcessorKleisli =
-    kleisliProcessor(messageProcessor(uri, mgnt))
-
   /** Semigroup to append exceptions. Returns the first exception and ignores the second */
   implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
 

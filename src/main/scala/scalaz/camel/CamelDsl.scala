@@ -1,10 +1,9 @@
 package scalaz.camel
 
-import java.util.concurrent.CountDownLatch
-
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
 
 import scalaz._
+import java.util.concurrent.{TimeUnit, CountDownLatch}
 
 /**
  * @author Martin Krasser
@@ -49,6 +48,11 @@ trait CamelDsl extends CamelConv {
 
   private def multicast(destinations: List[MessageProcessorKleisli])(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
+      //
+      // TODO: when upgrading to a higher scalaz version, create a Promise instance explicitly
+      //       (and call Promise#fulfill instead of using an Exchanger in validationFunction)
+      //
+
       // obtain a promise for a list of MessageValidation values
       val vsPromise = (m.pure[List] <*> destinations ∘ validationFunction ∘ (promiseFunction(_)(s))).sequence
       // combine promised success messages into single message or return first failure
@@ -57,18 +61,17 @@ trait CamelDsl extends CamelConv {
       }).get /* here we need to block */)
     }
 
-  private def validationFunction(p: MessageProcessorKleisli): Message => MessageValidation = (m: Message) => {
-    val exchr = new java.util.concurrent.Exchanger[MessageValidation]
-    p apply m.success respond { mv => exchr.exchange(mv) }
-    exchr.exchange(null)
-  }
+  private def validationFunction(p: MessageProcessorKleisli): Message => MessageValidation =
+    (m: Message) => run(p).withMessage(m).get
 
   private def promiseFunction(p: Message => MessageValidation)(implicit s: Strategy) =
     kleisliFn[Promise, Message, MessageValidation](p.promise(s))
 
   // ------------------------------------------
-  //  DSL (route initiation)
+  //  DSL (route initiation and endpoints)
   // ------------------------------------------
+
+  def to(uri: String)(implicit mgnt: EndpointMgnt) = messageProcessor(uri, mgnt)
 
   def from(uri: String) = new MainRouteDefinition(uri)
 
@@ -144,6 +147,54 @@ trait CamelDsl extends CamelConv {
         }
       })
       latch.await
+    }
+  }
+
+  // ------------------------------------------
+  //  DSL (for running route fragments)
+  // ------------------------------------------
+
+  def run(p: MessageProcessorKleisli) = new Runner(p)
+
+  class Runner(p: MessageProcessorKleisli) {
+    /**
+     * Runs p and returns a Future for obtaining the result. In upcoming releases,
+     * this will be replaced with a scalaz.concurrent.Promise return value.
+     */
+    def withMessage(m: Message): java.util.concurrent.Future[MessageValidation] = {
+      //
+      // TODO: use Promise#fulfill with newer scalaz version
+      //
+      val future = new RunnerFuture[MessageValidation]
+      p apply m.success respond { mv => future.completeWith(mv) }
+      future
+    }
+  }
+
+  /** Temporary naive future implementation */
+  private class RunnerFuture[A] extends java.util.concurrent.Future[A] {
+    val latch = new CountDownLatch(1)
+    var result: A = _ // write happens-before read
+
+    def get(t: Long, u: TimeUnit) = {
+      latch.await(t, u)
+      result
+    }
+
+    def get = {
+      latch.await
+      result
+    }
+
+    def isDone = latch.getCount < 1
+
+    def isCancelled = throw new UnsupportedOperationException
+
+    def cancel(p1: Boolean) = throw new UnsupportedOperationException
+
+    private[camel] def completeWith(a: A) {
+      result = a
+      latch.countDown
     }
   }
 }

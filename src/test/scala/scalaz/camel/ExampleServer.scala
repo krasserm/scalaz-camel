@@ -47,7 +47,7 @@ class ExampleServer extends ExampleSupport with WordSpec with MustMatchers with 
       // - asynchronous Jetty HTTP client and
       // - asynchronous message processor
       from("direct:test-1") route {
-        "jetty:http://localhost:8766/test" >=> asyncAppendString("-done")
+        to("jetty:http://localhost:8766/test") >=> asyncAppendString("-done")
       }
 
       template.requestBody("direct:test-1", "test") must equal("testtest-done")
