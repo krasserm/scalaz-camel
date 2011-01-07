@@ -1,14 +1,30 @@
+/*
+ * Copyright 2010-2011 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package scalaz.camel
+
+import java.util.concurrent.CountDownLatch
 
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
 
 import scalaz._
-import java.util.concurrent.{TimeUnit, CountDownLatch}
 
 /**
  * @author Martin Krasser
  *
- * @see scalaz.camel.async.Camel
+ * @see scalaz.camel.Camel
  */
 trait CamelDsl extends CamelConv {
   import concurrent.Promise
@@ -16,97 +32,155 @@ trait CamelDsl extends CamelConv {
   import Scalaz._
   import Message._
 
-  // ----------------------------------------------------------------------------------------------
-  //  This is currently an experimental alternative implementation to  scalaz.camel.CamelDsl
-  //  that supports asynchronous message processors and non-blocking routes based on continuations
-  //  (scala.Responder, a continuation monad). However, the DSL syntax is the same. This approach
-  //  will either replace the approach followed in scalaz.camel.CamelDsl or a combined usage will
-  //  be supported.
-  // ----------------------------------------------------------------------------------------------
-
   // ------------------------------------------
-  //  DSL (EIPs)
+  //  EIPs
   // ------------------------------------------
 
-  /** The content-based router EIP */
-  def choose(f: PartialFunction[Message, MessageProcessorKleisli]): MessageProcessorKleisli =
+  /**
+   * Concurrency strategy for distributing messages to destinations with the multicast EIP.
+   */
+  protected def multicastStrategy: Strategy
+
+  /**
+   * The content-based router EIP.
+   */
+  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
     kleisli[Responder, MessageValidation, MessageValidation](
       (mv: MessageValidation) => mv match {
-        case Failure(e) =>  new MessageResponder(Failure(e), null) // 2nd arg won't be evaluated
-        case Success(m) =>  new MessageResponder(Success(m), messageProcessor(f(m)))
+        case Failure(e) =>  new MessageValidationResponder(Failure(e), null)
+        case Success(m) =>  new MessageValidationResponder(Success(m), messageProcessor(f(m)))
       }
     )
 
-  /** The recipient-list EIP */
-  def multicast(destinations: MessageProcessorKleisli*)(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessorKleisli =
+  /**
+   * The recipient-list EIP. It applies the concurrency strategy returned by
+   * <code>multicastStrategy</code> to distribute messages to their destinations.
+   */
+  def multicast(destinations: MessageValidationResponderKleisli*)(aggregator: MessageAggregator): MessageValidationResponderKleisli = {
+    val mcf = multicastFunction(destinations.toList, aggregator)
     kleisli[Responder, MessageValidation, MessageValidation](
       (mv: MessageValidation) => mv match {
-        case Failure(e) =>  new MessageResponder(Failure(e), null) // 2nd arg won't be evaluated
-        case Success(m) =>  new MessageResponder(Success(m), multicast(destinations.toList)(aggregator))
+        case Failure(e) =>  new MessageValidationResponder(Failure(e), null)
+        case Success(m) =>  new MessageValidationResponder(Success(m), mcf)
       }
     )
+  }
 
-  private def multicast(destinations: List[MessageProcessorKleisli])(aggregator: MessageAggregator)(implicit s: Strategy): MessageProcessor =
+  private def multicastFunction(destinations: List[MessageValidationResponderKleisli], aggregator: MessageAggregator): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
-      //
-      // TODO: when upgrading to a higher scalaz version, create a Promise instance explicitly
-      //       (and call Promise#fulfill instead of using an Exchanger in validationFunction)
-      //
+      val ctr = new java.util.concurrent.atomic.AtomicInteger(destinations.size)
+      val mva = Array.fill[MessageValidation](destinations.size)(null)
 
-      // obtain a promise for a list of MessageValidation values
-      val vsPromise = (m.pure[List] <*> destinations ∘ validationFunction ∘ (promiseFunction(_)(s))).sequence
-      // combine promised success messages into single message or return first failure
-      k(vsPromise.map(vs => vs.tail.foldLeft(vs.head) {
-        (z, m) => m <*> z ∘ aggregator.curried
-      }).get /* here we need to block */)
+      // collects destinations.size results and combines
+      // them (once they're available) using aggregator
+      val cont = (mv: MessageValidation, pos: Int) => {
+        mva.synchronized(mva(pos) = mv)
+        if (ctr.decrementAndGet == 0) {
+          val mvl = mva.synchronized(mva.toList)
+          k(mvl.tail.foldLeft(mvl.head) {(z, m) => m <*> z ∘ aggregator.curried})
+        }
+      }
+
+      // mutlicast using concurrency as provided by multicastStrategy
+      destinations.foldLeft(0) { (pos, d) => {
+          multicastStrategy.apply {
+            d apply m.success respond { mv =>  cont(mv, pos) }
+          }
+          pos + 1
+        }
+      }
     }
 
-  private def validationFunction(p: MessageProcessorKleisli): Message => MessageValidation =
-    (m: Message) => run(p).withMessage(m).get
-
-  private def promiseFunction(p: Message => MessageValidation)(implicit s: Strategy) =
-    kleisliFn[Promise, Message, MessageValidation](p.promise(s))
+  /** Semigroup to 'append' exceptions. Returns the first exception and ignores the second */
+  implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
 
   // ------------------------------------------
-  //  DSL (route initiation and endpoints)
+  //  Access to message processing results
   // ------------------------------------------
 
-  def to(uri: String)(implicit mgnt: EndpointMgnt) = messageProcessor(uri, mgnt)
+  /**
+   * Provides convenient access to (asynchronous) message validation responses
+   * generated by responder r. Hides continuation-passing style (CPS) usage of
+   * responder r.
+   *
+   * @see Camel.responderToResponseAccess
+   */
+  class ValidationResponseAccess(r: Responder[MessageValidation]) {
+    /** Obtain response from responder r (blocking) */
+    def response: MessageValidation = responsePromise(Strategy.Sequential).get
 
-  def from(uri: String) = new MainRouteDefinition(uri)
+    /** Obtain response promise from responder r */
+    def responsePromise(implicit s: Strategy): Promise[MessageValidation] = {
+      val queue = new java.util.concurrent.ArrayBlockingQueue[MessageValidation](2)
+      r respond { mv => queue.put(mv) }
+      promise(queue.take)
+    }
+  }
 
-  class MainRouteDefinition(uri: String) {
-    def route(r: MessageProcessorKleisli)(implicit emgnt: EndpointMgnt, cmgnt: ContextMgnt): ErrorRouteDefinition = {
-      val processor = new RouteProcessor(r, cmgnt) with ErrorRouteDefinition
-      val consumer = emgnt.createConsumer(uri, processor)
+  /**
+   * Provides convenient access to (asynchronous) message validation responses
+   * generated by an application of responder Kleisli p (e.g. a Kleisli route)
+   * to a message m. Hides continuation-passing style (CPS) usage of responder
+   * Kleisli p.
+   *
+   * @see responderKleisliToResponseAccessKleisli
+   */
+  class ValidationResponseAccessKleisli(p: MessageValidationResponderKleisli) {
+    /** Obtain response from responder Kleisli p for message m (blocking) */
+    def responseFor(m: Message) = responsePromiseFor(m)(Strategy.Sequential).get
+
+    /** Obtain response promise from responder Kleisli p for message m */
+    def responsePromiseFor(m: Message)(implicit s: Strategy) =
+      new ValidationResponseAccess(p apply m.success).responsePromise
+  }
+
+  // ------------------------------------------
+  //  Route initiation and endpoints
+  // ------------------------------------------
+
+  /** Creates an endpoint producer */
+  def to(uri: String)(implicit em: EndpointMgnt) = messageProcessor(uri, em)
+
+  /** Defines the starting point of a route from the given endpoint */
+  def from(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = new MainRouteDefinition(uri, em, cm)
+
+  /** Represents the starting point of a route from an endpoint defined by <code>uri</code> */
+  class MainRouteDefinition(uri: String, em: EndpointMgnt, cm: ContextMgnt) {
+    /** Connects a route to the endpoint consumer */
+    def route(r: MessageValidationResponderKleisli): ErrorRouteDefinition = {
+      val processor = new RouteProcessor(r, cm) with ErrorRouteDefinition
+      val consumer = em.createConsumer(uri, processor)
       processor
     }
   }
 
+  /** Respresents the starting point of error handling routes for given exception classes */
   trait ErrorRouteDefinition {
     import collection.mutable.Buffer
 
-    case class ErrorHandler(c: Class[_ <: Exception], r: MessageProcessorKleisli)
+    case class ErrorHandler(c: Class[_ <: Exception], r: MessageValidationResponderKleisli)
 
-    val errorHandlers = Buffer[ErrorHandler]()
-    var errorClass: Class[_ <: Exception] = _
+    private[camel] val errorHandlers = Buffer[ErrorHandler]()
+    private[camel] var errorClass: Class[_ <: Exception] = _
 
-    def route(r: MessageProcessorKleisli) = {
+    /** Associates the error handling route r with the current exception class */
+    def route(r: MessageValidationResponderKleisli) = {
       errorHandlers append ErrorHandler(errorClass, r)
       this
     }
 
+    /** Sets the current exception class to which an error handling route should be associated */
     def onError[A <: Exception](c: Class[A]) = {
       errorClass = c
       this
     }
   }
 
-  class RouteProcessor(p: MessageProcessorKleisli, mgnt: ContextMgnt) extends AsyncProcessor { this: ErrorRouteDefinition =>
+  private class RouteProcessor(p: MessageValidationResponderKleisli, cm: ContextMgnt) extends AsyncProcessor { this: ErrorRouteDefinition =>
     def process(exchange: Exchange, callback: AsyncCallback) =
-      route(exchange.getIn.toMessage.cache(mgnt), callback, p, errorHandlers.toList)
+      route(exchange.getIn.toMessage.cache(cm), callback, p, errorHandlers.toList)
 
-    def route(message: Message, callback: AsyncCallback, target: MessageProcessorKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
+    def route(message: Message, callback: AsyncCallback, target: MessageValidationResponderKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
       val exchange = message.exchange
       target apply message.success respond { rv: MessageValidation =>
         rv match {
@@ -147,54 +221,6 @@ trait CamelDsl extends CamelConv {
         }
       })
       latch.await
-    }
-  }
-
-  // ------------------------------------------
-  //  DSL (for running route fragments)
-  // ------------------------------------------
-
-  def run(p: MessageProcessorKleisli) = new Runner(p)
-
-  class Runner(p: MessageProcessorKleisli) {
-    /**
-     * Runs p and returns a Future for obtaining the result. In upcoming releases,
-     * this will be replaced with a scalaz.concurrent.Promise return value.
-     */
-    def withMessage(m: Message): java.util.concurrent.Future[MessageValidation] = {
-      //
-      // TODO: use Promise#fulfill with newer scalaz version
-      //
-      val future = new RunnerFuture[MessageValidation]
-      p apply m.success respond { mv => future.completeWith(mv) }
-      future
-    }
-  }
-
-  /** Temporary naive future implementation */
-  private class RunnerFuture[A] extends java.util.concurrent.Future[A] {
-    val latch = new CountDownLatch(1)
-    var result: A = _ // write happens-before read
-
-    def get(t: Long, u: TimeUnit) = {
-      latch.await(t, u)
-      result
-    }
-
-    def get = {
-      latch.await
-      result
-    }
-
-    def isDone = latch.getCount < 1
-
-    def isCancelled = throw new UnsupportedOperationException
-
-    def cancel(p1: Boolean) = throw new UnsupportedOperationException
-
-    private[camel] def completeWith(a: A) {
-      result = a
-      latch.countDown
     }
   }
 }
