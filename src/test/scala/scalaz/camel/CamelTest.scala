@@ -235,7 +235,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           // For sequential multicast (or a when using a single-threaded
           // executor for multicast) then exception message 'x' will always
           // be reported first.
-          if (Camel.multicastConcurrencyStrategy == Strategy.Sequential)
+          if (Camel.scatterConcurrencyStrategy == Strategy.Sequential)
             e.getCause.getMessage must equal ("x")
         }
       }
@@ -300,7 +300,7 @@ class CamelTestConcurrent extends CamelTest with ExecutorMgnt {
   import java.util.concurrent.Executors
 
   Camel.dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  Camel.scatterConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
   CamelTestProcessors.processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
 
   override def afterAll = {

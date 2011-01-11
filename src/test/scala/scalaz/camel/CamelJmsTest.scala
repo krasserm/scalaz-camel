@@ -34,7 +34,7 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
   import CamelTestProcessors._
 
   Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
+  Camel.scatterConcurrencyStrategy = Sequential
   CamelTestProcessors.processorConcurrencyStrategy = Naive
 
   val context = springCamelContext("/context.xml")

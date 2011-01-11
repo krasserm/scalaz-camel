@@ -33,82 +33,104 @@ import concurrent.Strategy
 trait CamelDslEip extends CamelConv {
 
   /**
-   * Name of the position header needed for multicast
+   * Name of the position header needed used by scatter
    */
-  private val Position = "scalaz.camel.multicast.position"
+  val Position = "scalaz.camel.multicast.position"
 
   /**
-   * Concurrency strategy for distributing messages to destinations with the multicast EIP.
+   * Concurrency strategy for distributing messages to
+   * destinations with the scatter and multicast EIPs.
    */
-  protected def multicastStrategy: Strategy
+  protected def scatterStrategy: Strategy
 
   // ------------------------------------------
   //  EIPs
   // ------------------------------------------
 
-  /** Converts messages to be oneway messages */
+  /**
+   * Converts messages to one-way messages
+   */
   def oneway = responderKleisli(messageProcessor { m: Message => m.setOneway(true) } )
 
-  /** Converts messages to be twoway messages */
+  /**
+   * Converts messages to two-way messages
+   */
   def twoway = responderKleisli(messageProcessor { m: Message => m.setOneway(false) } )
 
   /**
    * The content-based router EIP.
    */
   def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
-    kleisli[Responder, MessageValidation, MessageValidation](
-      (mv: MessageValidation) => mv match {
-        case Failure(m) =>  new MessageValidationResponder(Failure(m), null)
-        case Success(m) =>  new MessageValidationResponder(Success(m), messageProcessor(f(m)))
-      }
-    )
+    responderKleisli((m: Message, k: MessageValidation => Unit) => messageProcessor(f(m))(m, k))
 
   /**
    * The recipient-list EIP. It applies the concurrency strategy returned by
-   * <code>multicastStrategy</code> to distribute messages to their destinations.
+   * <code>scatterStrategy</code> to distribute messages to their destinations.
+   * Distributed messages are combine using <code>combine</code>. The combined
+   * message is dispatched to the next message processor.
    */
   def multicast(destinations: MessageValidationResponderKleisli*)(combine: (Message, Message) => Message): MessageValidationResponderKleisli = {
-    val mcf = multicastFunction(destinations.toList, combine)
-    kleisli[Responder, MessageValidation, MessageValidation](
-      (mv: MessageValidation) => mv match {
-        case Failure(m) =>  new MessageValidationResponder(Failure(m), null)
-        case Success(m) =>  new MessageValidationResponder(Success(m), mcf)
-      }
-    )
+    val mcp = multicastProcessor(destinations.toList, combine)
+    responderKleisli((m: Message, k: MessageValidation => Unit) => mcp(m, k))
   }
 
-  /** Creates a function that distributes messages to destinations and combines the responses */
-  private def multicastFunction(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
-    (m: Message, k: MessageValidation => Unit) => {
-      val scatter = responderKleisli(multicastScatter(destinations: _*))
-      val gather  = responderKleisli(multicastGather(combine, destinations.size))
-      // ... let's eat our own dog food ...
-      scatter >=> gather apply m.success respond k
-    }
-  }
-
-  /** Creates a function that distributes a message to destinations */
-  private def multicastScatter(destinations: MessageValidationResponderKleisli*): MessageProcessor = {
+  /**
+   * Distributes messages to given destinations. It applies the concurrency strategy
+   * returned by <code>scatterStrategy</code> to distribute messages. Distributed
+   * messages are not combined, all are dispatched individually to the next message
+   * processor.
+   */
+  def scatter(destinations: MessageValidationResponderKleisli*) = responderKleisli {
     (m: Message, k: MessageValidation => Unit) => {
       0 until destinations.size foreach { i =>
-        multicastStrategy.apply {
+        scatterStrategy.apply {
           destinations(i) apply m.success respond { mv => k(mv ∘ (_.addHeader(Position -> i))) }
         }
       }
     }
   }
 
-  /** Creates a function that collects and combines <code>count</code> messages */
-  private def multicastGather(combine: (Message, Message) => Message, count: Int): MessageProcessor = {
+  /**
+   * Continues processing if <code>f</code> returns some message. Allows
+   * providers of <code>f</code> to gather messages and continue processing
+   * with a combined message, for example.
+   */
+  def gather(f: Message => Option[Message]) = responderKleisli {
+    (m: Message, k: MessageValidation => Unit) => {
+      f(m) match {
+        case Some(r) => k(r.success)
+        case None    => { /* do not continue */ }
+      }
+    }
+  }
+
+  // ------------------------------------------
+  //  Internal
+  // ------------------------------------------
+
+  /** Creates a function that distributes messages to destinations and combines the responses */
+  private def multicastProcessor(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
+    (m: Message, k: MessageValidation => Unit) => {
+      val mcScatter = scatter(destinations: _*)
+      val mcGather  = gather(multicastGather(combine, destinations.size))
+      // ... let's eat our own dog food ...
+      mcScatter >=> mcGather apply m.success respond k
+    }
+  }
+
+  /** Creates a function that collects and combines multicast responses (used with gather EIP) */
+  def multicastGather(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
     val ct = new AtomicInteger(count)
     val ma = Array.fill[Message](count)(null)
-    (m: Message, k: MessageValidation => Unit) => {
+    (m: Message) => {
       for (pos <- m.header(Position).asInstanceOf[Option[Int]]) {
         ma.synchronized(ma(pos) = m)
       }
       if (ct.decrementAndGet == 0) {
         val ml = ma.synchronized(ma.toList)
-        k(ml.tail.foldLeft(ml.head)((m1, m2) => combine(m1, m2).removeHeader(Position)).success)
+        Some(ml.tail.foldLeft(ml.head)((m1, m2) => combine(m1, m2).removeHeader(Position)))
+      } else {
+        None
       }
     }
   }

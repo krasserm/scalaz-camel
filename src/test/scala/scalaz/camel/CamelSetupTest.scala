@@ -31,7 +31,7 @@ class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
   import CamelTestProcessors._
 
   Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
+  Camel.scatterConcurrencyStrategy = Sequential
   CamelTestProcessors.processorConcurrencyStrategy = Naive
 
   val context = new DefaultCamelContext

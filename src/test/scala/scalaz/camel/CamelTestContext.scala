@@ -25,7 +25,7 @@ trait CamelTestContext {
   import scalaz.concurrent.Strategy._
 
   Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
+  Camel.scatterConcurrencyStrategy = Sequential
   CamelTestProcessors.processorConcurrencyStrategy = Sequential
 
   val context = new DefaultCamelContext

@@ -64,13 +64,13 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
 
 class CamelLoadTestConcurrent1 extends CamelLoadTest {
   Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
-  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
+  Camel.scatterConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
   CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
 }
 
 class CamelLoadTestConcurrentN extends CamelLoadTest {
   Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
+  Camel.scatterConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
   CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
 }
 
