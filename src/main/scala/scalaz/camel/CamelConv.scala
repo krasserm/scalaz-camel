@@ -21,8 +21,6 @@ import scalaz._
 
 /**
  * @author Martin Krasser
- *
- * @see scalaz.camel.Camel
  */
 trait CamelConv {
   import scalaz.concurrent.Strategy
@@ -31,7 +29,6 @@ trait CamelConv {
 
   type MessageValidation = Validation[Message, Message]
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
-
   type MessageValidationResponderKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
 
   /**

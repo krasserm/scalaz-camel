@@ -25,12 +25,14 @@ package scalaz.camel
  * class Foo {
  *   import Scalaz._
  *   import Camel._
+ *
+ *   ...
  * }
  * </pre>
  *
  * @author Martin Krasser
  */
-object Camel extends CamelDsl {
+object Camel extends CamelDslEip with CamelDslRoute with CamelDslAccess {
   import org.apache.camel.Processor
   import scalaz.concurrent.Strategy
 

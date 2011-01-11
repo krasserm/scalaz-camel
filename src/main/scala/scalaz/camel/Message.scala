@@ -15,8 +15,7 @@
  */
 package scalaz.camel
 
-import scala.collection.JavaConversions._
-import org.apache.camel.{ExchangePattern, CamelContext, Exchange, Message => CamelMessage}
+import org.apache.camel.{ExchangePattern, CamelContext, Message => CamelMessage}
 
 /**
  * An immutable representation of a Camel message.
@@ -110,6 +109,8 @@ case class MessageExchange(oneway: Boolean)
  * @author Martin Krasser
  */
 class MessageConverter(val cm: CamelMessage) {
+  import scala.collection.JavaConversions._
+
   def fromMessage(m: Message): CamelMessage = {
     cm.getExchange.setPattern(cePattern(m.exchange))
     cm.setBody(m.body)

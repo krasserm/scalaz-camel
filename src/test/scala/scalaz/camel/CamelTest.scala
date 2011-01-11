@@ -15,13 +15,14 @@
  */
 package scalaz.camel
 
+import org.apache.camel.builder.RouteBuilder
+import org.apache.camel.{Exchange, Predicate}
+
 import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
 
 import scalaz._
 import scalaz.concurrent.Strategy
-import org.apache.camel.builder.RouteBuilder
-import org.apache.camel.{Exchange, Predicate}
 
 /**
  * @author Martin Krasser
@@ -228,7 +229,15 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       try {
         template.requestBody("direct:test-12", "a"); fail("exception expected")
       } catch {
-        case e: Exception => e.getCause.getMessage must equal ("x")
+        case e: Exception => {
+          // test passed but reported exception message can be either 'x'
+          // or 'y' if message is distributed to destination concurrently.
+          // For sequential multicast (or a when using a single-threaded
+          // executor for multicast) then exception message 'x' will always
+          // be reported first.
+          if (Camel.multicastConcurrencyStrategy == Strategy.Sequential)
+            e.getCause.getMessage must equal ("x")
+        }
       }
     }
 
