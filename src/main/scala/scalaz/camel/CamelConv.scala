@@ -29,8 +29,7 @@ trait CamelConv {
   import Scalaz._
   import Message._
 
-  type MessageValidation = Validation[Exception, Message]
-  type MessageAggregator = (Message, Message) => Message
+  type MessageValidation = Validation[Message, Message]
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
 
   type MessageValidationResponderKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
@@ -41,14 +40,21 @@ trait CamelConv {
   protected def dispatchStrategy: Strategy
 
   /**
+   * Semigroup to 'append' failure messages. Returns the first failure message and ignores
+   * the second. Needed for applicative usage of MessageValidation.
+   */
+  implicit def ExceptionSemigroup: Semigroup[Message] = semigroup((m1, m2) => m1)
+
+  /**
    * A continuation monad for constructing routes from asynchronous message processors.
    * It applies the concurrency strategy returned by <code>dispatchStrategy</code> for
    * dispatching messages along the processor chain (i.e. route)
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
+    val updateExchange = (m1: Message) => (m2: Message) => m1.setExchange(m2)
     def respond(k: MessageValidation => Unit) = v match {
-      case Success(m) => dispatchStrategy.apply(p(m, r => k(r)))
-      case Failure(e) => dispatchStrategy.apply(k(Failure(e)))
+      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* preserves MessageExchange */)))
+      case Failure(m) => dispatchStrategy.apply(k(Failure(m)))
     }
   }
 
@@ -58,36 +64,36 @@ trait CamelConv {
   def messageProcessor(p: MessageValidationResponderKleisli): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => p apply m.success respond k
 
-  def messageProcessor(uri: String, em: EndpointMgnt): MessageProcessor =
-    messageProcessor(em.createProducer(uri))
-
-  def messageProcessor(p: Processor): MessageProcessor =
-    if (p.isInstanceOf[AsyncProcessor]) messageProcessor(p.asInstanceOf[AsyncProcessor])
-    else messageProcessor(new ProcessorAdapter(p))
-
   def messageProcessor(p: Message => Message): MessageProcessor =
     messageProcessor(p, Strategy.Sequential)
 
   def messageProcessor(p: Message => Message, s: Strategy): MessageProcessor = (m: Message, k: MessageValidation => Unit) =>
-    s.apply { try { k(p(m).success) } catch { case e: Exception => k(e.fail) } }
+    s.apply { try { k(p(m).success) } catch { case e: Exception => k(m.setException(e).fail) } }
 
-  def messageProcessor(p: AsyncProcessor): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
-    val me = m.exchange.getOrElse(throw new IllegalArgumentException("Message exchange not set"))
-    val ce = me.copy
+  def messageProcessor(uri: String, em: EndpointMgnt, cm: ContextMgnt): MessageProcessor =
+    messageProcessor(em.createProducer(uri), cm)
 
-    ce.getIn.fromMessage(m)
-    ce.setOut(null)
+  def messageProcessor(p: Processor, cm: ContextMgnt): MessageProcessor =
+    if (p.isInstanceOf[AsyncProcessor]) messageProcessor(p.asInstanceOf[AsyncProcessor], cm)
+    else messageProcessor(new ProcessorAdapter(p), cm)
 
-    p.process(ce, new AsyncCallback {
+  def messageProcessor(p: AsyncProcessor, cm: ContextMgnt): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
+    import org.apache.camel.impl.DefaultExchange
+
+    val me = new DefaultExchange(cm.context)
+
+    me.getIn.fromMessage(m) // also updates the exchange pattern
+
+    p.process(me, new AsyncCallback {
       def done(doneSync: Boolean) =
-        if (ce.isFailed) k(ce.getException.fail)
-        else k(resultMessage(ce).success)
+        if (me.isFailed) k(resultMessage(me).setException(me.getException).fail)
+        else k(resultMessage(me).success)
 
       private def resultMessage(me: Exchange) = {
         val rm = if (me.hasOut) me.getOut else me.getIn
         me.setOut(null)
         me.setIn(rm)
-        rm.toMessage.setExchange(me)
+        rm.toMessage
       }
     })
   }

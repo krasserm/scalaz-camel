@@ -55,8 +55,8 @@ object Camel extends CamelDsl {
   implicit def messageFunctionToResponderKleisli(p: Message => Message): MessageValidationResponderKleisli =
     responderKleisli(messageProcessor(p))
 
-  implicit def camelProcessorToResponderKleisli(p: Processor): MessageValidationResponderKleisli =
-    responderKleisli(messageProcessor(p))
+  implicit def camelProcessorToResponderKleisli(p: Processor)(implicit cm: ContextMgnt): MessageValidationResponderKleisli =
+    responderKleisli(messageProcessor(p, cm))
 
   implicit def responderToResponseAccess(r: Responder[MessageValidation]) =
     new ValidationResponseAccess(r)

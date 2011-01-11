@@ -61,7 +61,7 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
       from("jetty:http://localhost:8761/test") route {
         convertBodyToString >=> failWith("failure")
       } onError classOf[Exception] route {
-        convertBodyToString >=> appendToBody("-handled") >=> markHandled
+        appendToBody("-handled") >=> markHandled
       }
 
       template.requestBody("http://localhost:8761/test", "test", classOf[String]) must equal ("test-handled")

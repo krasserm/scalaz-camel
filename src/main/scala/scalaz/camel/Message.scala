@@ -16,8 +16,7 @@
 package scalaz.camel
 
 import scala.collection.JavaConversions._
-
-import org.apache.camel.{CamelContext, Exchange, Message => CamelMessage}
+import org.apache.camel.{ExchangePattern, CamelContext, Exchange, Message => CamelMessage}
 
 /**
  * An immutable representation of a Camel message.
@@ -30,13 +29,11 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   // TODO: make Message an instance of Functor
 
   val ExceptionHeader = "scalaz.camel.exception"
-  val exchange: Option[Exchange] = None
+  val exchange = MessageExchange(false)
 
   override def toString = "Message: %s" format body
 
   def setBody(body: Any) = Message(body, headers, exchange)
-
-  def setExchange(e: Exchange) = Message(body, headers, Some(e))
 
   def setHeaders(headers: Map[String, Any]) = Message(body, headers, exchange)
 
@@ -74,34 +71,37 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   def transformBody[A](transformer: A => Any) =
     setBody(transformer(body.asInstanceOf[A]))
 
-  import java.io.{ByteArrayInputStream => BAIS, InputStream => IS}
+  private[camel] def setExchange(exch: MessageExchange) =
+    Message(body, headers, exch)
 
-  // Experimental
-  private[camel] def cache(implicit mgnt: ContextMgnt) = if (body.isInstanceOf[IS]) bodyTo[BAIS] else this
+  private[camel] def setExchange(m: Message) =
+    Message(body, headers, m.exchange)
 
-  // Experimental
-  private[camel] def reset = if (body.isInstanceOf[BAIS]) resetStream(body.asInstanceOf[BAIS]) else this
+  private[camel] def setOneway(oneway: Boolean) =
+    Message(body, headers, MessageExchange(oneway))
 
   private def convertTo[A](c: Class[A], context: CamelContext)(a: Any): A =
     context.getTypeConverter.mandatoryConvertTo[A](c, a)
 
-  private def resetStream(s: java.io.ByteArrayInputStream) = {
-    s.reset; this
-  }
 }
 
 /**
  * @author Martin Krasser
  */
 object Message {
-  /** Create a Message with body, headers and a Camel exchange */
-  def apply(body: Any, headers: Map[String, Any], e: Option[Exchange]): Message = new Message(body, headers) {
-    override val exchange = e
-  }
-
   /** Creates a Converter from a Camel message */
   implicit def camelMessageToConverter(cm: CamelMessage): MessageConverter = new MessageConverter(cm)
+
+  /** Create a Message with body, headers and a Camel exchange */
+  private[camel] def apply(body: Any, headers: Map[String, Any], exch: MessageExchange): Message = new Message(body, headers) {
+    override val exchange = exch
+  }
 }
+
+/**
+ * @author Martin Krasser
+ */
+case class MessageExchange(oneway: Boolean)
 
 /**
  * Converts between <code>scalaz.camel.Message</code> and
@@ -111,13 +111,18 @@ object Message {
  */
 class MessageConverter(val cm: CamelMessage) {
   def fromMessage(m: Message): CamelMessage = {
+    cm.getExchange.setPattern(cePattern(m.exchange))
     cm.setBody(m.body)
     for (h <- m.headers) cm.getHeaders.put(h._1, h._2.asInstanceOf[AnyRef])
     cm
   }
 
   def toMessage: Message = toMessage(Map.empty)
-  def toMessage(headers: Map[String, Any]): Message = Message(cm.getBody, cmHeaders(headers, cm), Some(cm.getExchange))
-  def cmHeaders(headers: Map[String, Any], cm: CamelMessage) = headers ++ cm.getHeaders
+  def toMessage(headers: Map[String, Any]): Message =
+    Message(cm.getBody, cmHeaders(headers, cm), MessageExchange(isOneway(cm)))
+
+  private def cmHeaders(headers: Map[String, Any], cm: CamelMessage) = headers ++ cm.getHeaders
+  private def cePattern(me: MessageExchange) = if (me.oneway) ExchangePattern.InOnly else ExchangePattern.InOut
+  private def isOneway(cm: CamelMessage) = if (cm.getExchange.getPattern.isOutCapable) false else true
 }
 

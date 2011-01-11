@@ -20,6 +20,8 @@ import org.scalatest.matchers.MustMatchers
 
 import scalaz._
 import scalaz.concurrent.Strategy
+import org.apache.camel.builder.RouteBuilder
+import org.apache.camel.{Exchange, Predicate}
 
 /**
  * @author Martin Krasser
@@ -51,33 +53,43 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "Kleisli composition of asynchonous Camel message processors" in {
-      repeatBody >=> repeatBody responseFor Message("a").setExchange(exchange) must equal(Success(Message("aaaa")))
+      repeatBody >=> repeatBody responseFor Message("a") must equal(Success(Message("aaaa")))
     }
 
     "Kleisli composition of synchonous Camel message processors" in {
-      repeatBody.sp >=> repeatBody.sp responseFor Message("a").setExchange(exchange) must equal(Success(Message("aaaa")))
+      repeatBody.sp >=> repeatBody.sp responseFor Message("a") must equal(Success(Message("aaaa")))
     }
 
     "Kleisli composition of (a)synchronous Camel endpoint processors" in {
-      to("direct:predef-1") >=> to("direct:predef-2") responseFor Message("a").setExchange(exchange) must equal(Success(Message("a-p1-p2")))
+      to("direct:predef-1") >=> to("direct:predef-2") responseFor Message("a") must equal(Success(Message("a-p1-p2")))
     }
 
     "Kleisli composition of different types of message processors" in {
        repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> appendToBodySync("-2") >=> to("direct:predef-1") responseFor
-         Message("a").setExchange(exchange) must equal(Success(Message("aaaa-1-2-p1")))
+         Message("a") must equal(Success(Message("aaaa-1-2-p1")))
     }
+
+    //
+    // TODO: inline processors (sync and async)
+    //
 
     "failure reporting for asynchronous processors" in {
       failWith("1") >=> failWith("2") responseFor Message("a") match {
-        case Failure(e: Exception) => e.getMessage must equal("1")
-        case Success(_)            => fail("Failure result expected")
+        case Success(_)          => fail("Failure result expected")
+        case Failure(m: Message) => m.exception match {
+          case Some(e: Exception) => e.getMessage must equal("1")
+          case None               => fail("no exception set for message")
+        }
       }
     }
 
     "failure reporting for synchronous processors (that throw exceptions)" in {
       failWithSync("1") >=> failWithSync("2") responseFor Message("a") match {
-        case Failure(e: Exception) => e.getMessage must equal("1")
-        case Success(_)            => fail("Failure result expected")
+        case Success(_)          => fail("Failure result expected")
+        case Failure(m: Message) => m.exception match {
+          case Some(e: Exception) => e.getMessage must equal("1")
+          case None               => fail("no exception set for message")
+        }
       }
     }
 
@@ -91,7 +103,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       promise.get match {
         case Success(m) => m.body must equal("a-1-2")
-        case Failure(e) => fail("unexpected failure")
+        case Failure(m) => fail("unexpected failure")
       }
     }
 
@@ -100,7 +112,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       appendToBody("-1") >=> appendToBody("-2") apply Message("a").success respond { mv => queue.put(mv) }
       queue.take match {
         case Success(m) => m.body must equal("a-1-2")
-        case Failure(e) => fail("unexpected failure")
+        case Failure(m) => fail("unexpected failure")
       }
     }
 
@@ -130,9 +142,9 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         appendToBody("-3") >=> markHandled
       }
 
-      template.requestBody("direct:test-2", "a") must equal ("a-1")
-      template.requestBody("direct:test-2", "b") must equal ("b-2")
-      template.requestBody("direct:test-2", "c") must equal ("c-3")
+      template.requestBody("direct:test-2", "a") must equal ("a-0-1")
+      template.requestBody("direct:test-2", "b") must equal ("b-0-2")
+      template.requestBody("direct:test-2", "c") must equal ("c-0-3")
     }
 
     "error handling including reporting of causing exception" in {
@@ -191,27 +203,27 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "(concurrent) recipient-lists using the 'multicast' combinator" in {
-      val aggregator = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
+      val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-11") route {
         appendToBody("-1") >=> multicast(
           appendToBody("-2") >=> appendToBody("-3"),
           appendToBody("-4") >=> appendToBody("-5"),
           appendToBody("-6") >=> appendToBody("-7")
-        )(aggregator) >=> appendToBody(" done")
+        )(combine) >=> appendToBody(" done")
       }
 
       template.requestBody("direct:test-11", "a") must equal ("a-1-2-3 + a-1-4-5 + a-1-6-7 done")
     }
 
     "(concurrent) recipient-lists that fail if one of the recipients fail" in {
-      val aggregator = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
+      val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-12") route {
         appendToBody("-1") >=> multicast(
           appendToBody("-2") >=> failWith("x"),
           appendToBody("-4") >=> failWith("y")
-        )(aggregator) >=> appendToBody(" done")
+        )(combine) >=> appendToBody(" done")
       }
       try {
         template.requestBody("direct:test-12", "a"); fail("exception expected")
@@ -229,7 +241,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       val composite2: Message => Message = (m: Message) =>
         appendToBody("-n3") >=> appendToBody("-n4") responseFor m match {
           case Success(m) => m
-          case Failure(e) => throw e
+          case Failure(m) => throw m.exception.get
         }
 
       from("direct:test-20") route {
@@ -254,6 +266,19 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       } yield a |@| b apply { (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body) }
 
       promise.get must equal(Success(Message("test-1-2 + test-3-4")))
+    }
+
+    "preserving the message exchange even if a processor drops it" in {
+      val badguy = (m: Message) => new Message("bad") // new message that doesn't contain exchange of m
+      val route = appendToBody("-1") >=> badguy >=> appendToBody("-2")
+
+      val response = route responseFor Message("a").setOneway(true) match {
+        case Failure(m) => fail("unexpected failure")
+        case Success(m) => {
+          m.exchange.oneway must be (true)
+          m.body must equal ("bad-2")
+        }
+      }
     }
   }
 

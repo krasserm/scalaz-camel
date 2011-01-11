@@ -31,7 +31,6 @@ trait CamelTestContext {
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate
 
-  def exchange = new DefaultExchange(context)
   def mock = context.getEndpoint("mock:mock", classOf[MockEndpoint])
 
   implicit val router = new Router(context)

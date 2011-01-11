@@ -39,12 +39,12 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
 
   "scalaz.camel.Camel" should {
     "be able to pass a simple load test" in {
-      val aggregator = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
+      val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
       val route = appendToBody("-1") >=> multicast(
         appendToBody("-2") >=> appendToBody("-3"),
         appendToBody("-4") >=> appendToBody("-5"),
         appendToBody("-6") >=> appendToBody("-7")
-      )(aggregator) >=> appendToBody(" done")
+      )(combine) >=> appendToBody(" done")
 
       val count = 1000
       val latch = new CountDownLatch(count)

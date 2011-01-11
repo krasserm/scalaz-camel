@@ -41,13 +41,19 @@ trait CamelDsl extends CamelConv {
    */
   protected def multicastStrategy: Strategy
 
+  /** Converts messages to be oneway messages */
+  def oneway = responderKleisli(messageProcessor { m: Message => m.setOneway(true) } )
+
+  /** Converts messages to be twoway messages */
+  def twoway = responderKleisli(messageProcessor { m: Message => m.setOneway(false) } )
+
   /**
    * The content-based router EIP.
    */
   def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
     kleisli[Responder, MessageValidation, MessageValidation](
       (mv: MessageValidation) => mv match {
-        case Failure(e) =>  new MessageValidationResponder(Failure(e), null)
+        case Failure(m) =>  new MessageValidationResponder(Failure(m), null)
         case Success(m) =>  new MessageValidationResponder(Success(m), messageProcessor(f(m)))
       }
     )
@@ -56,28 +62,33 @@ trait CamelDsl extends CamelConv {
    * The recipient-list EIP. It applies the concurrency strategy returned by
    * <code>multicastStrategy</code> to distribute messages to their destinations.
    */
-  def multicast(destinations: MessageValidationResponderKleisli*)(aggregator: MessageAggregator): MessageValidationResponderKleisli = {
-    val mcf = multicastFunction(destinations.toList, aggregator)
+  def multicast(destinations: MessageValidationResponderKleisli*)(combine: (Message, Message) => Message): MessageValidationResponderKleisli = {
+    val mcf = multicastFunction(destinations.toList, combine)
+
+    //
+    // TODO: refactor into a composition of split and aggregate
+    //
+
     kleisli[Responder, MessageValidation, MessageValidation](
       (mv: MessageValidation) => mv match {
-        case Failure(e) =>  new MessageValidationResponder(Failure(e), null)
+        case Failure(m) =>  new MessageValidationResponder(Failure(m), null)
         case Success(m) =>  new MessageValidationResponder(Success(m), mcf)
       }
     )
   }
 
-  private def multicastFunction(destinations: List[MessageValidationResponderKleisli], aggregator: MessageAggregator): MessageProcessor =
+  private def multicastFunction(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       val ctr = new java.util.concurrent.atomic.AtomicInteger(destinations.size)
       val mva = Array.fill[MessageValidation](destinations.size)(null)
 
       // collects destinations.size results and combines
-      // them (once they're available) using aggregator
+      // them (once they're available) using combine
       val cont = (mv: MessageValidation, pos: Int) => {
         mva.synchronized(mva(pos) = mv)
         if (ctr.decrementAndGet == 0) {
           val mvl = mva.synchronized(mva.toList)
-          k(mvl.tail.foldLeft(mvl.head) {(z, m) => m <*> z ∘ aggregator.curried})
+          k(mvl.tail.foldLeft(mvl.head) {(z, m) => m <*> z ∘ combine.curried})
         }
       }
 
@@ -90,9 +101,6 @@ trait CamelDsl extends CamelConv {
         }
       }
     }
-
-  /** Semigroup to 'append' exceptions. Returns the first exception and ignores the second */
-  implicit def ExceptionSemigroup: Semigroup[Exception] = semigroup((e1, e2) => e1)
 
   // ------------------------------------------
   //  Access to message processing results
@@ -139,7 +147,7 @@ trait CamelDsl extends CamelConv {
   // ------------------------------------------
 
   /** Creates an endpoint producer */
-  def to(uri: String)(implicit em: EndpointMgnt) = messageProcessor(uri, em)
+  def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = messageProcessor(uri, em, cm)
 
   /** Defines the starting point of a route from the given endpoint */
   def from(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = new MainRouteDefinition(uri, em, cm)
@@ -178,34 +186,25 @@ trait CamelDsl extends CamelConv {
 
   private class RouteProcessor(p: MessageValidationResponderKleisli, cm: ContextMgnt) extends AsyncProcessor { this: ErrorRouteDefinition =>
     def process(exchange: Exchange, callback: AsyncCallback) =
-      route(exchange.getIn.toMessage.cache(cm), callback, p, errorHandlers.toList)
+      route(exchange.getIn.toMessage, exchange, callback, p, errorHandlers.toList)
 
-    def route(message: Message, callback: AsyncCallback, target: MessageValidationResponderKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
-      val exchange = message.exchange
+    def route(message: Message, exchange: Exchange, callback: AsyncCallback, target: MessageValidationResponderKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
       target apply message.success respond { rv: MessageValidation =>
         rv match {
-          case Failure(e) => {
-            for (me <- exchange) {
-              me.setException(e)
-              errorHandlers.find(_.c.isInstance(e)) match {
-                case None                     => callback.done(false)
-                case Some(ErrorHandler(_, r)) => {
-                  me.setException(null)
-                  // route original message to error handler
-                  // with the exception set on message header
-                  route(message.reset.setException(e), callback, r, Nil)
-                }
+          case Failure(m) => {
+            m.exception ∘ (exchange.setException(_))
+            errorHandlers.find(_.c.isInstance(exchange.getException)) match {
+              case None                     => callback.done(false)
+              case Some(ErrorHandler(_, r)) => {
+                exchange.setException(null)
+                route(m, exchange, callback, r, Nil)
               }
             }
           }
           case Success(m) => {
-            for (me <- exchange; e <- m.exception) {
-              me.setException(e)
-            }
-            for (me <- exchange) {
-              me.getIn.fromMessage(m)
-              me.getOut.fromMessage(m)
-            }
+            m.exception ∘ (exchange.setException(_))
+            exchange.getIn.fromMessage(m)
+            exchange.getOut.fromMessage(m)
             callback.done(false)
           }
         }
