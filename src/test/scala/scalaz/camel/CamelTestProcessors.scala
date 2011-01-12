@@ -26,7 +26,6 @@ object CamelTestProcessors {
   import scalaz.concurrent.Strategy
   import Scalaz._
   import Camel.MessageProcessor
-  import Camel.messageProcessor
 
   /** Concurrency strategy for each created processor (defaults to Strategy.Sequential) */
   var processorConcurrencyStrategy: Strategy = Strategy.Sequential
@@ -39,9 +38,6 @@ object CamelTestProcessors {
 
   /** Fails with exception e */
   def failWith(e: Exception): MessageProcessor = ap(m => throw e)
-
-  /** Marks this message as error-handled */
-  def markHandled: MessageProcessor = ap(m => m.exceptionHandled)
 
   /** Converts message body to String */
   def convertBodyToString(implicit mgnt: ContextMgnt) = ap(m => m.bodyTo[String])

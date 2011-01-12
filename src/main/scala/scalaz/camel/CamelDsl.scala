@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import java.util.concurrent.CountDownLatch
+import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue, CountDownLatch}
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
@@ -133,6 +133,12 @@ trait CamelDslEip extends CamelConv {
     }
   }
 
+  /** 
+   * Marks messages as failed by setting exception <code>e</code> on MessageExchange
+   */
+  def markFailed(e: Exception): MessageProcessor = messageProcessor(m => m.setException(e))
+
+
   // ------------------------------------------
   //  Internal
   // ------------------------------------------
@@ -184,38 +190,27 @@ trait CamelDslRoute extends CamelConv {
   class MainRouteDefinition(uri: String, em: EndpointMgnt, cm: ContextMgnt) {
     /** Connects a route to the endpoint consumer */
     def route(r: MessageValidationResponderKleisli): ErrorRouteDefinition = {
-      val processor = new RouteProcessor(r, cm) with ErrorRouteDefinition
+      val processor = new RouteProcessor(r)
       val consumer = em.createConsumer(uri, processor)
       processor
     }
   }
 
-  /** Respresents the starting point of error handling routes for given exception classes */
+  /** Respresents the starting point of error handling routes for given exception */
   trait ErrorRouteDefinition {
-    import collection.mutable.Buffer
+    type Handler = PartialFunction[Exception, MessageValidationResponderKleisli]
 
-    case class ErrorHandler(c: Class[_ <: Exception], r: MessageValidationResponderKleisli)
+    var handler: Option[Handler] = None
 
-    private[camel] val errorHandlers = Buffer[ErrorHandler]()
-    private[camel] var errorClass: Class[_ <: Exception] = _
-
-    /** Associates the error handling route r with the current exception class */
-    def route(r: MessageValidationResponderKleisli) = {
-      errorHandlers append ErrorHandler(errorClass, r)
-      this
-    }
-
-    /** Sets the current exception class to which an error handling route should be associated */
-    def onError[A <: Exception](c: Class[A]) = {
-      errorClass = c
-      this
+    def handle(handler: Handler) {
+      this.handler = Some(handler)
     }
   }
 
-  private class RouteProcessor(p: MessageValidationResponderKleisli, cm: ContextMgnt) extends AsyncProcessor { this: ErrorRouteDefinition =>
-    def process(exchange: Exchange, callback: AsyncCallback) =
-      route(exchange.getIn.toMessage, exchange, callback, p, errorHandlers.toList)
+  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor with ErrorRouteDefinition {
+    import RouteProcessor._
 
+    /** Synchronous process */
     def process(exchange: Exchange) = {
       val latch = new CountDownLatch(1)
       process(exchange, new AsyncCallback() {
@@ -226,29 +221,57 @@ trait CamelDslRoute extends CamelConv {
       latch.await
     }
 
-    private def route(message: Message, exchange: Exchange, callback: AsyncCallback, target: MessageValidationResponderKleisli, errorHandlers: List[ErrorHandler]): Boolean = {
-      target apply message.success respond once((rv: MessageValidation) => rv match {
-        case Failure(m) => {
-          m.exception ∘ (exchange.setException(_))
-          errorHandlers.find(_.c.isInstance(exchange.getException)) match {
-            case None                     => callback.done(false)
-            case Some(ErrorHandler(_, r)) => {
-              exchange.setException(null)
-              route(m, exchange, callback, r, Nil)
-            }
-          }
-        }
-        case Success(m) => {
-          m.exception ∘ (exchange.setException(_))
-          exchange.getIn.fromMessage(m)
-          exchange.getOut.fromMessage(m)
-          callback.done(false)
-        }
-      })
+    /** Asynchronous process */
+    def process(exchange: Exchange, callback: AsyncCallback) =
+      if (exchange.getPattern.isOutCapable) processInOut(exchange, callback) else processInOnly(exchange, callback)
+
+    private def processInOut(exchange: Exchange, callback: AsyncCallback) = {
+      route(exchange.getIn.toMessage, once(respondTo(exchange, callback)))
       false
     }
 
-    private def once(k: MessageValidation => Unit): MessageValidation => Unit = {
+    private def processInOnly(exchange: Exchange, callback: AsyncCallback) = {
+      route(exchange.getIn.toMessage, ((mv: MessageValidation) => { /* ignore any result */ }))
+      callback.done(true)
+      true
+    }
+
+    private def route(message: Message, k: MessageValidation => Unit): Unit = {
+      p apply message.success respond { mv =>
+        mv match {
+          case Success(m) => k(mv)
+          case Failure(m) => {
+            handler match {
+              case None    => k(mv)
+              case Some(h) => {
+                for {
+                  e <- m.exception
+                  r <- h.lift(e)
+                } {
+                  r apply m.exceptionHandled.success respond k
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private object RouteProcessor {
+    def respondTo(exchange: Exchange, callback: AsyncCallback): MessageValidation => Unit = (mv: MessageValidation ) => mv match {
+      case Success(m) => respond(m, exchange, callback)
+      case Failure(m) => respond(m, exchange, callback)
+    }
+
+    def respond(message: Message, exchange: Exchange, callback: AsyncCallback): Unit = {
+      message.exception ∘ (exchange.setException(_))
+      exchange.getIn.fromMessage(message)
+      exchange.getOut.fromMessage(message)
+      callback.done(false)
+    }
+
+    def once(k: MessageValidation => Unit): MessageValidation => Unit = {
       val done = new java.util.concurrent.atomic.AtomicBoolean(false)
       (mv: MessageValidation) => if (!done.getAndSet(true)) k(mv)
     }

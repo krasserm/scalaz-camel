@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import org.apache.camel.{ExchangePattern, CamelContext, Message => CamelMessage}
+import org.apache.camel.{Exchange, ExchangePattern, CamelContext, Message => CamelMessage}
 
 /**
  * An immutable representation of a Camel message.
@@ -27,8 +27,7 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   // TODO: make Message a parameterized type
   // TODO: make Message an instance of Functor
 
-  val ExceptionHeader = "scalaz.camel.exception"
-  val exchange = MessageExchange(false)
+  val exchange = MessageExchange()
 
   override def toString = "Message: %s" format body
 
@@ -42,11 +41,7 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
   def removeHeader(headerName: String) = Message(body, headers - headerName, exchange)
 
-  def exception: Option[Exception] = header(ExceptionHeader).asInstanceOf[Option[Exception]]
-
-  def setException(e: Exception) = addHeader(ExceptionHeader, e)
-
-  def exceptionHandled = removeHeader(ExceptionHeader)
+  def exception: Option[Exception] = exchange.exception
 
   def headers(names: Set[String]): Map[String, Any] = headers.filter(names contains _._1)
 
@@ -77,11 +72,16 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
     Message(body, headers, m.exchange)
 
   private[camel] def setOneway(oneway: Boolean) =
-    Message(body, headers, MessageExchange(oneway))
+    Message(body, headers, exchange.setOneway(oneway))
+
+  private[camel] def setException(e: Exception) =
+    Message(body, headers, exchange.setException(Some(e)))
+
+  private[camel] def exceptionHandled =
+    Message(body, headers, exchange.setException(None))
 
   private def convertTo[A](c: Class[A], context: CamelContext)(a: Any): A =
     context.getTypeConverter.mandatoryConvertTo[A](c, a)
-
 }
 
 /**
@@ -100,7 +100,23 @@ object Message {
 /**
  * @author Martin Krasser
  */
-case class MessageExchange(oneway: Boolean)
+case class MessageExchange(oneway: Boolean, exception: Option[Exception]) {
+  def setOneway(o: Boolean) = MessageExchange(o, exception)
+
+  def setException(e: Option[Exception]) = MessageExchange(oneway, e)
+}
+
+/**
+ * @author Martin Krasser
+ */
+object MessageExchange {
+  /** Creates a Converter from a Camel exchange */
+  implicit def camelExchangeToConverter(ce: Exchange) = new MessageExchangeConverter(ce)
+
+  /** Create a default MessageExchange */
+  def apply(): MessageExchange = MessageExchange(false, None)
+
+}
 
 /**
  * Converts between <code>scalaz.camel.Message</code> and
@@ -110,9 +126,10 @@ case class MessageExchange(oneway: Boolean)
  */
 class MessageConverter(val cm: CamelMessage) {
   import scala.collection.JavaConversions._
+  import MessageExchange._
 
   def fromMessage(m: Message): CamelMessage = {
-    cm.getExchange.setPattern(cePattern(m.exchange))
+    cm.getExchange.fromMessageExchange(m.exchange)
     cm.setBody(m.body)
     for (h <- m.headers) cm.getHeaders.put(h._1, h._2.asInstanceOf[AnyRef])
     cm
@@ -120,10 +137,25 @@ class MessageConverter(val cm: CamelMessage) {
 
   def toMessage: Message = toMessage(Map.empty)
   def toMessage(headers: Map[String, Any]): Message =
-    Message(cm.getBody, cmHeaders(headers, cm), MessageExchange(isOneway(cm)))
+    Message(cm.getBody, cmHeaders(cm, headers), cm.getExchange.toMessageExchange)
 
-  private def cmHeaders(headers: Map[String, Any], cm: CamelMessage) = headers ++ cm.getHeaders
-  private def cePattern(me: MessageExchange) = if (me.oneway) ExchangePattern.InOnly else ExchangePattern.InOut
-  private def isOneway(cm: CamelMessage) = if (cm.getExchange.getPattern.isOutCapable) false else true
+  private def cmHeaders(cm: CamelMessage, headers: Map[String, Any]) = headers ++ cm.getHeaders
 }
 
+/**
+ * @author Martin Krasser
+ */
+class MessageExchangeConverter(val ce: Exchange) {
+  def fromMessageExchange(me: MessageExchange) = {
+    ce.setPattern(if (me.oneway) ExchangePattern.InOnly else ExchangePattern.InOut)
+    ce.setException(me.exception match {
+        case Some(e) => e
+        case None    => null
+      })
+  }
+
+  def toMessageExchange = MessageExchange(
+    if (ce.getPattern.isOutCapable) false else true,
+    if (ce.getException == null) None else Some(ce.getException)
+  )
+}

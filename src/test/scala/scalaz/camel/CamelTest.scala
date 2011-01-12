@@ -135,12 +135,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       from("direct:test-2") route {
         appendToBody("-0") >=> p
-      } onError classOf[TestException1] route {
-        appendToBody("-1") >=> markHandled
-      } onError classOf[TestException2] route {
-        appendToBody("-2") >=> markHandled
-      } onError classOf[Exception] route {
-        appendToBody("-3") >=> markHandled
+      } handle {
+        case e: TestException1 => appendToBody("-1")
+        case e: TestException2 => appendToBody("-2")
+        case e: Exception      => appendToBody("-3")
       }
 
       template.requestBody("direct:test-2", "a") must equal ("a-0-1")
@@ -150,9 +148,9 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
     "error handling including reporting of causing exception" in {
       from("direct:test-3") route {
-        failWith("failed")
-      } onError classOf[Exception] route {
-        to("mock:mock")
+        failWith(new TestException1("failed"))
+      } handle {
+        case e: Exception => to("mock:mock") >=> markFailed(e)
       }
 
       mock.expectedBodiesReceived("a")
@@ -160,7 +158,11 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       try {
         template.requestBody("direct:test-3", "a"); fail("exception expected")
       } catch {
-        case e: Exception => e.getCause.getMessage must equal ("failed")
+        case e: Exception => {
+          val cause = e.getCause
+          cause.isInstanceOf[TestException1] must be (true)
+          cause.getMessage must equal ("failed")
+        }
       }
 
       mock.assertIsSatisfied
@@ -169,14 +171,14 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     "error handling with failures in error handlers" in {
       from("direct:test-4a") route {
         failWith("failed")
-      } onError classOf[Exception] route {
-        failWith("x")
+      } handle {
+        case e: Exception => failWith("x")
       }
 
       from("direct:test-4b") route {
         failWith("failed")
-      } onError classOf[Exception] route {
-        markHandled >=> failWith("x")
+      } handle {
+        case e: Exception => failWith("x")
       }
 
       try {
@@ -192,7 +194,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "content-based routing using the 'choose' combinator" in {
+    "content-based routing" in {
       from("direct:test-10") route {
         appendToBody("-1") >=> choose {
           case Message("a-1", _) => appendToBody("-2") >=> appendToBody("-3")
@@ -203,7 +205,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-10", "b") must equal ("b-1-4-5-done")
     }
 
-    "(concurrent) recipient-lists using the 'multicast' combinator" in {
+    "(concurrent) scatter-gather" in {
       val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-11") route {
@@ -217,7 +219,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-11", "a") must equal ("a-1-2-3 + a-1-4-5 + a-1-6-7 done")
     }
 
-    "(concurrent) recipient-lists that fail if one of the recipients fail" in {
+    "(concurrent) scatter-gather that fails if one of the recipients fail" in {
       val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-12") route {
@@ -260,7 +262,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-20", "test") must equal("test-n1-n2-n3-n4")
     }
 
-    "custom multicast using for-comprehensions and promises" in {
+    "custom scatter-gather using for-comprehensions and promises" in {
       // needed for creation of response promise (can be any
       // other strategy as well such as Sequential or ...)
       implicit val strategy = Strategy.Naive
@@ -268,26 +270,13 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       // input message to destination routes
       val input = Message("test")
 
-      // custom multicast
+      // custom scatter-gather
       val promise = for {
         a <- appendToBody("-1") >=> appendToBody("-2") responsePromiseFor input
         b <- appendToBody("-3") >=> appendToBody("-4") responsePromiseFor input
       } yield a |@| b apply { (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body) }
 
       promise.get must equal(Success(Message("test-1-2 + test-3-4")))
-    }
-
-    "preserving the message exchange even if a processor drops it" in {
-      val badguy = (m: Message) => new Message("bad") // new message that doesn't contain exchange of m
-      val route = appendToBody("-1") >=> badguy >=> appendToBody("-2")
-
-      val response = route responseFor Message("a").setOneway(true) match {
-        case Failure(m) => fail("unexpected failure")
-        case Success(m) => {
-          m.exchange.oneway must be (true)
-          m.body must equal ("bad-2")
-        }
-      }
     }
   }
 

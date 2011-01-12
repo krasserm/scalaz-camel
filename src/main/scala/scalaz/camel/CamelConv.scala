@@ -48,9 +48,8 @@ trait CamelConv {
    * dispatching messages along the processor chain (i.e. route)
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
-    val updateExchange = (m1: Message) => (m2: Message) => m1.setExchange(m2)
     def respond(k: MessageValidation => Unit) = v match {
-      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* preserves MessageExchange */)))
+      case Success(m) => dispatchStrategy.apply(p(m, r => k(r)))
       case Failure(m) => dispatchStrategy.apply(k(Failure(m)))
     }
   }
@@ -79,12 +78,14 @@ trait CamelConv {
 
     val me = new DefaultExchange(cm.context)
 
-    me.getIn.fromMessage(m) // also updates the exchange pattern
+    me.getIn.fromMessage(m)
 
     p.process(me, new AsyncCallback {
       def done(doneSync: Boolean) =
-        if (me.isFailed) k(resultMessage(me).setException(me.getException).fail)
-        else k(resultMessage(me).success)
+        if (me.isFailed)
+          k(resultMessage(me).fail)
+        else
+          k(resultMessage(me).success)
 
       private def resultMessage(me: Exchange) = {
         val rm = if (me.hasOut) me.getOut else me.getIn

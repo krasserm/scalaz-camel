@@ -60,8 +60,8 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
     "caching of input streams so that original message can be used in error handlers" in {
       from("jetty:http://localhost:8761/test") route {
         convertBodyToString >=> failWith("failure")
-      } onError classOf[Exception] route {
-        appendToBody("-handled") >=> markHandled
+      } handle {
+        case e: Exception => appendToBody("-handled")
       }
 
       template.requestBody("http://localhost:8761/test", "test", classOf[String]) must equal ("test-handled")
