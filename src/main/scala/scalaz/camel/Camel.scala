@@ -37,19 +37,19 @@ object Camel extends CamelDslEip with CamelDslRoute with CamelDslAccess {
   import scalaz.concurrent.Strategy
 
   /**
-   * Concurrency strategy to use for dispatching messages along the processor
-   * chain. Defaults to <code>Strategy.Sequential</code>. 
+   * Concurrency strategy to use for dispatching messages along the processor chain.
+   * Defaults to <code>Strategy.Sequential</code>.
    */
   var dispatchConcurrencyStrategy: Strategy = Strategy.Sequential
 
   /**
-   * Concurrency strategy to use for distributing messages to destinations with
-   * the scatter and multicast EIPs. Defaults to <code>Strategy.Sequential</code>.
+   * Concurrency strategy to use for distributing messages to destinations with the
+   * multicast and scatter-gather EIPs. Defaults to <code>Strategy.Sequential</code>.
    */
-  var scatterConcurrencyStrategy: Strategy = Strategy.Sequential
+  var multicastConcurrencyStrategy: Strategy = Strategy.Sequential
 
   protected def dispatchStrategy = dispatchConcurrencyStrategy
-  protected def scatterStrategy = scatterConcurrencyStrategy
+  protected def multicastStrategy = multicastConcurrencyStrategy
 
   implicit def messageProcessorToResponderKleisli(p: MessageProcessor): MessageValidationResponderKleisli =
     responderKleisli(p)

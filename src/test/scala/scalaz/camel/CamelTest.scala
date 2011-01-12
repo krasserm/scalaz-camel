@@ -207,11 +207,11 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-11") route {
-        appendToBody("-1") >=> multicast(
+        appendToBody("-1") >=> scatter(
           appendToBody("-2") >=> appendToBody("-3"),
           appendToBody("-4") >=> appendToBody("-5"),
           appendToBody("-6") >=> appendToBody("-7")
-        )(combine) >=> appendToBody(" done")
+        ).gather(combine) >=> appendToBody(" done")
       }
 
       template.requestBody("direct:test-11", "a") must equal ("a-1-2-3 + a-1-4-5 + a-1-6-7 done")
@@ -221,10 +221,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
 
       from("direct:test-12") route {
-        appendToBody("-1") >=> multicast(
+        appendToBody("-1") >=> scatter(
           appendToBody("-2") >=> failWith("x"),
           appendToBody("-4") >=> failWith("y")
-        )(combine) >=> appendToBody(" done")
+        ).gather(combine) >=> appendToBody(" done")
       }
       try {
         template.requestBody("direct:test-12", "a"); fail("exception expected")
@@ -235,7 +235,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           // For sequential multicast (or a when using a single-threaded
           // executor for multicast) then exception message 'x' will always
           // be reported first.
-          if (Camel.scatterConcurrencyStrategy == Strategy.Sequential)
+          if (Camel.multicastConcurrencyStrategy == Strategy.Sequential)
             e.getCause.getMessage must equal ("x")
         }
       }
@@ -300,7 +300,7 @@ class CamelTestConcurrent extends CamelTest with ExecutorMgnt {
   import java.util.concurrent.Executors
 
   Camel.dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.scatterConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  Camel.multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
   CamelTestProcessors.processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
 
   override def afterAll = {

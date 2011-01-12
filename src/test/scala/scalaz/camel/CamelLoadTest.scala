@@ -40,11 +40,11 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
   "scalaz.camel.Camel" should {
     "be able to pass a simple load test" in {
       val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
-      val route = appendToBody("-1") >=> multicast(
+      val route = appendToBody("-1") >=> scatter(
         appendToBody("-2") >=> appendToBody("-3"),
         appendToBody("-4") >=> appendToBody("-5"),
         appendToBody("-6") >=> appendToBody("-7")
-      )(combine) >=> appendToBody(" done")
+      ).gather(combine) >=> appendToBody(" done")
 
       val count = 1000
       val latch = new CountDownLatch(count)
@@ -64,13 +64,13 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
 
 class CamelLoadTestConcurrent1 extends CamelLoadTest {
   Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
-  Camel.scatterConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
+  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
   CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
 }
 
 class CamelLoadTestConcurrentN extends CamelLoadTest {
   Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.scatterConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
+  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
   CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
 }
 

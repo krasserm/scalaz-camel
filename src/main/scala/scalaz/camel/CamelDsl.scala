@@ -38,10 +38,10 @@ trait CamelDslEip extends CamelConv {
   val Position = "scalaz.camel.multicast.position"
 
   /**
-   * Concurrency strategy for distributing messages to
-   * destinations with the scatter and multicast EIPs.
+   * Concurrency strategy for distributing messages to destinations
+   * with the multicast and scatter-gather EIPs.
    */
-  protected def scatterStrategy: Strategy
+  protected def multicastStrategy: Strategy
 
   // ------------------------------------------
   //  EIPs
@@ -58,32 +58,22 @@ trait CamelDslEip extends CamelConv {
   def twoway = responderKleisli(messageProcessor { m: Message => m.setOneway(false) } )
 
   /**
-   * The content-based router EIP.
+   * Routes based on pattern matching of messages. Implements the content-based router EIP.
    */
   def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
     responderKleisli((m: Message, k: MessageValidation => Unit) => messageProcessor(f(m))(m, k))
 
-  /**
-   * The recipient-list EIP. It applies the concurrency strategy returned by
-   * <code>scatterStrategy</code> to distribute messages to their destinations.
-   * Distributed messages are combine using <code>combine</code>. The combined
-   * message is dispatched to the next message processor.
-   */
-  def multicast(destinations: MessageValidationResponderKleisli*)(combine: (Message, Message) => Message): MessageValidationResponderKleisli = {
-    val mcp = multicastProcessor(destinations.toList, combine)
-    responderKleisli((m: Message, k: MessageValidation => Unit) => mcp(m, k))
-  }
 
   /**
    * Distributes messages to given destinations. It applies the concurrency strategy
-   * returned by <code>scatterStrategy</code> to distribute messages. Distributed
+   * returned by <code>multicastStrategy</code> to distribute messages. Distributed
    * messages are not combined, all are dispatched individually to the next message
-   * processor.
+   * processor. Implements the static recipient-list EIP.
    */
-  def scatter(destinations: MessageValidationResponderKleisli*) = responderKleisli {
+  def multicast(destinations: MessageValidationResponderKleisli*) = responderKleisli {
     (m: Message, k: MessageValidation => Unit) => {
       0 until destinations.size foreach { i =>
-        scatterStrategy.apply {
+        multicastStrategy.apply {
           destinations(i) apply m.success respond { mv => k(mv ∘ (_.addHeader(Position -> i))) }
         }
       }
@@ -91,16 +81,55 @@ trait CamelDslEip extends CamelConv {
   }
 
   /**
-   * Continues processing if <code>f</code> returns some message. Allows
-   * providers of <code>f</code> to gather messages and continue processing
-   * with a combined message, for example.
+   * Implements the aggregator EIP. Continues processing if <code>f</code> returns
+   * some message. Allows providers of <code>f</code> to aggregate messages and
+   * continue processing with a combined message, for example.
    */
-  def gather(f: Message => Option[Message]) = responderKleisli {
+  def aggregate(f: Message => Option[Message]) = responderKleisli {
     (m: Message, k: MessageValidation => Unit) => {
-      f(m) match {
-        case Some(r) => k(r.success)
-        case None    => { /* do not continue */ }
+      try {
+        f(m) match {
+          case Some(r) => k(r.success)
+          case None    => { /* do not continue */ }
+        }
+      } catch {
+        case e: Exception => k(m.setException(e).fail)
       }
+    }
+  }
+
+  /**
+   * A message filter that evaluates predicate <code>p</code>. Implements the filter EIP.
+   */
+  def filter(p: Message => Boolean) = aggregate { m: Message =>
+    if (p(m)) Some(m) else None
+  }
+
+  /**
+   * Creates a builder for a scatter-gather processor.
+   *
+   * @see ScatterDefinition
+   */
+  def scatter(destinations: MessageValidationResponderKleisli*) = new ScatterDefinition(destinations: _*)
+
+  /**
+   * Builder for a scatter-gather processor.
+   *
+   * @see scatter
+   */
+  class ScatterDefinition(destinations: MessageValidationResponderKleisli*) {
+
+    /**
+     * Scatters messages to <code>destinations</code> and gathers and combines them using
+     * <code>combine</code>. Messages are scattered to <code>destinations</code> destinations
+     * using the concurrencyStartegy returned by <code>multicastStrategy</code>. Implements
+     * the scatter-gather EIP.
+     *
+     * @see scatter
+     */
+    def gather(combine: (Message, Message) => Message): MessageValidationResponderKleisli = {
+      val mcp = multicastProcessor(destinations.toList, combine)
+      responderKleisli((m: Message, k: MessageValidation => Unit) => mcp(m, k))
     }
   }
 
@@ -108,18 +137,18 @@ trait CamelDslEip extends CamelConv {
   //  Internal
   // ------------------------------------------
 
-  /** Creates a function that distributes messages to destinations and combines the responses */
+  /** Creates a function that scatters messages to destinations and gathers and combines the responses */
   private def multicastProcessor(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
     (m: Message, k: MessageValidation => Unit) => {
-      val mcScatter = scatter(destinations: _*)
-      val mcGather  = gather(multicastGather(combine, destinations.size))
+      val sgm = multicast(destinations: _*)
+      val sga = aggregate(gatherFunction(combine, destinations.size))
       // ... let's eat our own dog food ...
-      mcScatter >=> mcGather apply m.success respond k
+      sgm >=> sga apply m.success respond k
     }
   }
 
-  /** Creates a function that collects and combines multicast responses (used with gather EIP) */
-  def multicastGather(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
+  /** Creates a function that gathers and combines multicast responses */
+  private def gatherFunction(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
     val ct = new AtomicInteger(count)
     val ma = Array.fill[Message](count)(null)
     (m: Message) => {
