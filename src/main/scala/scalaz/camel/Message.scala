@@ -24,6 +24,8 @@ import org.apache.camel.{Exchange, ExchangePattern, CamelContext, Message => Cam
  */
 case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
+  private val SkipExchangeUpdate = "scalaz.camel.update.exchange.skip"
+
   // TODO: make Message a parameterized type
   // TODO: make Message an instance of Functor
 
@@ -40,6 +42,14 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
   def addHeader(header: (String, Any)) = Message(body, headers + header, exchange)
 
   def removeHeader(headerName: String) = Message(body, headers - headerName, exchange)
+
+  def setExchange(exch: MessageExchange) = Message(body, headers, exch).setSkipExchangeUpdate(true)
+
+  def setExchangeFrom(m: Message) = setExchange(m.exchange)
+
+  def setOneway(oneway: Boolean) = setExchange(exchange.setOneway(oneway))
+
+  def setException(e: Exception) = setExchange(exchange.setException(Some(e)))
 
   def exception: Option[Exception] = exchange.exception
 
@@ -58,27 +68,25 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
     Message(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body), headers, exchange)
 
   // TODO: remove once Message is a Functor
-  def appendBody(body: Any)(implicit mgnt: ContextMgnt) =
-    setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
+  def transformBody[A](transformer: A => Any)(implicit m: Manifest[A], mgnt: ContextMgnt) =
+    setBody(transformer(bodyAs[A]))
 
   // TODO: remove once Message is a Functor
-  def transformBody[A](transformer: A => Any) =
-    setBody(transformer(body.asInstanceOf[A]))
-
-  private[camel] def setExchange(exch: MessageExchange) =
-    Message(body, headers, exch)
-
-  private[camel] def setExchange(m: Message) =
-    Message(body, headers, m.exchange)
-
-  private[camel] def setOneway(oneway: Boolean) =
-    Message(body, headers, exchange.setOneway(oneway))
-
-  private[camel] def setException(e: Exception) =
-    Message(body, headers, exchange.setException(Some(e)))
+  def appendToBody(body: Any)(implicit mgnt: ContextMgnt) =
+    setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
 
   private[camel] def exceptionHandled =
     Message(body, headers, exchange.setException(None))
+
+  // Experimental
+  private[camel] def setSkipExchangeUpdate(skip: Boolean) =
+    if (skip) addHeader(SkipExchangeUpdate, skip) else removeHeader(SkipExchangeUpdate)
+
+  // Experimental
+  private[camel] def skipExchangeUpdate = header(SkipExchangeUpdate) match {
+    case Some(v) => v.asInstanceOf[Boolean]
+    case None    => false
+  }
 
   private def convertTo[A](c: Class[A], context: CamelContext)(a: Any): A =
     context.getTypeConverter.mandatoryConvertTo[A](c, a)

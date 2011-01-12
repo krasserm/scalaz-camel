@@ -31,6 +31,9 @@ trait CamelConv {
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
   type MessageValidationResponderKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
 
+  val updateExchange = (m1: Message) => (m2: Message) =>
+    (if (!m1.skipExchangeUpdate) m1.setExchangeFrom(m2) else m1).setSkipExchangeUpdate(false)
+
   /**
    * Concurrency strategy for dispatching messages along the processor chain (i.e. route).
    */
@@ -49,7 +52,7 @@ trait CamelConv {
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
     def respond(k: MessageValidation => Unit) = v match {
-      case Success(m) => dispatchStrategy.apply(p(m, r => k(r)))
+      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* preserves MessageExchange */)))
       case Failure(m) => dispatchStrategy.apply(k(Failure(m)))
     }
   }

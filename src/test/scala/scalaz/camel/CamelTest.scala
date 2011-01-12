@@ -39,7 +39,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
   }
 
   override def afterAll = router.stop
-  override def afterEach = mock.reset
+  override def afterEach = mocks.values.foreach { m => m.reset }
 
   def support = afterWord("support")
 
@@ -66,13 +66,19 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "Kleisli composition of different types of message processors" in {
-       repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> appendToBodySync("-2") >=> to("direct:predef-1") responseFor
+      repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> appendToBodySync("-2") >=> to("direct:predef-1") responseFor
          Message("a") must equal(Success(Message("aaaa-1-2-p1")))
     }
 
-    //
-    // TODO: inline processors (sync and async)
-    //
+    "Kleisli composition of asynchronous processors defined inline" in {
+      val route = appendToBody("-1") >=> { (m: Message, k: MessageValidation => Unit) => k(m.appendToBody("-x").success) }
+      route responseFor Message("a") must equal(Success(Message("a-1-x")))
+    }
+
+    "Kleisli composition of synchronous processors defined inline" in {
+      val route = appendToBody("-1") >=> { m: Message => m.appendToBody("-y") }
+      route responseFor Message("a") must equal(Success(Message("a-1-y")))
+    }
 
     "failure reporting for asynchronous processors" in {
       failWith("1") >=> failWith("2") responseFor Message("a") match {
@@ -153,7 +159,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         case e: Exception => to("mock:mock") >=> markFailed(e)
       }
 
-      mock.expectedBodiesReceived("a")
+      mock("mock").expectedBodiesReceived("a")
 
       try {
         template.requestBody("direct:test-3", "a"); fail("exception expected")
@@ -165,7 +171,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         }
       }
 
-      mock.assertIsSatisfied
+      mock("mock").assertIsSatisfied
     }
 
     "error handling with failures in error handlers" in {
@@ -206,7 +212,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "(concurrent) scatter-gather" in {
-      val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
+      val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
       from("direct:test-11") route {
         appendToBody("-1") >=> scatter(
@@ -220,7 +226,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "(concurrent) scatter-gather that fails if one of the recipients fail" in {
-      val combine = (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body)
+      val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
       from("direct:test-12") route {
         appendToBody("-1") >=> scatter(
@@ -274,12 +280,129 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       val promise = for {
         a <- appendToBody("-1") >=> appendToBody("-2") responsePromiseFor input
         b <- appendToBody("-3") >=> appendToBody("-4") responsePromiseFor input
-      } yield a |@| b apply { (m1: Message, m2: Message) => m1.appendBody(" + %s" format m2.body) }
+      } yield a |@| b apply { (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body) }
 
       promise.get must equal(Success(Message("test-1-2 + test-3-4")))
     }
-  }
 
+    "(concurrent) multicast" in {
+      from("direct:test-30") route {
+        appendToBody("-1") >=> multicast(
+          appendToBody("-2") >=> to("mock:mock1"),
+          appendToBody("-3") >=> to("mock:mock1")
+        ) >=> appendToBody("-done") >=> to("mock:mock2")
+      }
+
+      mock("mock1").expectedBodiesReceivedInAnyOrder("a-1-2"     , "a-1-3")
+      mock("mock2").expectedBodiesReceivedInAnyOrder("a-1-2-done", "a-1-3-done")
+
+      template.sendBody("direct:test-30", "a")
+
+      mock("mock1").assertIsSatisfied
+      mock("mock2").assertIsSatisfied
+    }
+
+    "(concurrent) multicast with a failing destination" in {
+      from("direct:test-31") route {
+        appendToBody("-1") >=> multicast(
+          appendToBody("-2"),
+          appendToBody("-3") >=> failWith("-fail")
+        ) >=> appendToBody("-done") >=> to("mock:mock")
+      } handle {
+        case e: Exception => appendToBody(e.getMessage) >=> to("mock:error")
+      }
+
+      mock("mock").expectedBodiesReceived("a-1-2-done")
+      mock("error").expectedBodiesReceived("a-1-3-fail")
+
+      template.sendBody("direct:test-31", "a")
+
+      mock("mock").assertIsSatisfied
+      mock("error").assertIsSatisfied
+    }
+
+    "splitting of messages" in {
+      val splitter = (m: Message) => for (i <- 1 to 3) yield { m.appendToBody("-%s" format i) }
+      from("direct:test-35") route {
+        split(splitter) >=> appendToBody("-done") >=> to("mock:mock")
+      }
+
+      mock("mock").expectedBodiesReceivedInAnyOrder("a-1-done", "a-2-done", "a-3-done")
+
+      template.sendBody("direct:test-35", "a")
+
+      mock("mock").assertIsSatisfied
+    }
+
+    "aggregation of messages" in {
+      def waitFor(count: Int) = {
+        val counter = new java.util.concurrent.atomic.AtomicInteger(0)
+        (m: Message) => {
+          m.header("keep") match {
+            case None    => Some(m)
+            case Some(_) => if (counter.incrementAndGet == count) Some(Message("aggregated")) else None
+          }
+        }
+      }
+
+      from("direct:test-40") route {
+        aggregate(waitFor(3)) >=> to("mock:mock")
+      }
+
+      mock("mock").expectedBodiesReceivedInAnyOrder("aggregated", "not aggregated")
+
+      // only third message will make the aggregator to send a response
+      for (i <- 1 to 5) template.sendBodyAndHeader("direct:test-40", "a", "keep", true)
+
+      // ignored by aggregator and forwarded as-is
+      template.sendBody("direct:test-40", "not aggregated")
+  
+      mock("mock").assertIsSatisfied
+    }
+
+    "filtering of messages" in {
+      from("direct:test-45") route {
+        filter(_.body == "ok") >=> to("mock:mock")
+      }
+
+      mock("mock").expectedBodiesReceived("ok")
+
+      template.sendBody("direct:test-45", "filtered")
+      template.sendBody("direct:test-45", "ok")
+
+      mock("mock").assertIsSatisfied
+    }
+
+    "preserving the message exchange even if a processor drops it" in {
+      // new message that doesn't contain exchange of m
+      val badguy1 = (m: Message) => new Message("bad")
+
+      // only a combined creation of a new Message with either setException or setOneway
+      // requires an explicit setting of the message context from the input message (only
+      // if it does
+      val badguy2 = (m: Message) => new Message("bad").setExchangeFrom(m).setException(new TestException1("x"))
+
+      val route1 = appendToBody("-1") >=> badguy1 >=> appendToBody("-2")
+      val route2 = appendToBody("-1") >=> badguy2 >=> appendToBody("-2")
+
+      route1 responseFor Message("a").setOneway(true) match {
+        case Failure(m) => fail("unexpected failure")
+        case Success(m) => {
+          m.exchange.oneway must be (true)
+          m.body must equal ("bad-2")
+        }
+      }
+
+      route2 responseFor Message("a").setOneway(true) match {
+        case Failure(m) => fail("unexpected failure")
+        case Success(m) => {
+          m.exchange.oneway must be (true)
+          m.body must equal ("bad-2")
+        }
+      }
+    }
+  }
+  
   class TestException1(msg: String) extends Exception(msg)
   class TestException2(msg: String) extends Exception(msg)
 }

@@ -66,7 +66,7 @@ class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
 
     "appending to the body using a string representation" in {
       val message = Message("a" , Map("A" -> "1"))
-      message.appendBody("b") must equal(Message("ab", Map("A" -> "1")))
+      message.appendToBody("b") must equal(Message("ab", Map("A" -> "1")))
     }
 
     "setting the body" in {
@@ -94,14 +94,14 @@ class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
       message.removeHeader("B") must equal(Message("a", Map("A" -> "1")))
     }
 
-    "setting the exception header" in {
+    "setting an exception" in {
       val exception = new Exception("test")
       val message = Message("a").setException(exception)
       message.exception must equal(Some(exception))
       Message("a").exception must equal(None)
     }
 
-    "clearing the exception header" in {
+    "clearing an exception" in {
       val exception = new Exception("test")
       val message = Message("a").setException(exception)
       message.exceptionHandled.exception must equal(None)

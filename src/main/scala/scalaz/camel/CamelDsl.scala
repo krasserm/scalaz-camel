@@ -48,27 +48,28 @@ trait CamelDslEip extends CamelConv {
   // ------------------------------------------
 
   /**
-   * Converts messages to one-way messages
+   * Converts messages to one-way messages.
    */
   def oneway = responderKleisli(messageProcessor { m: Message => m.setOneway(true) } )
 
   /**
-   * Converts messages to two-way messages
+   * Converts messages to two-way messages.
    */
   def twoway = responderKleisli(messageProcessor { m: Message => m.setOneway(false) } )
 
   /**
-   * Routes based on pattern matching of messages. Implements the content-based router EIP.
+   * Does routing based on pattern matching of messages. Implements the content-based
+   * router EIP.
    */
   def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
     responderKleisli((m: Message, k: MessageValidation => Unit) => messageProcessor(f(m))(m, k))
 
 
   /**
-   * Distributes messages to given destinations. It applies the concurrency strategy
+   * Distributes messages to given destinations. Applies the concurrency strategy
    * returned by <code>multicastStrategy</code> to distribute messages. Distributed
-   * messages are not combined, all are dispatched individually to the next message
-   * processor. Implements the static recipient-list EIP.
+   * messages are not combined, instead n responses are sent where n is the number
+   * of destinations. Implements the static recipient-list EIP.
    */
   def multicast(destinations: MessageValidationResponderKleisli*) = responderKleisli {
     (m: Message, k: MessageValidation => Unit) => {
@@ -81,9 +82,24 @@ trait CamelDslEip extends CamelConv {
   }
 
   /**
-   * Implements the aggregator EIP. Continues processing if <code>f</code> returns
-   * some message. Allows providers of <code>f</code> to aggregate messages and
-   * continue processing with a combined message, for example.
+   * Generates a sequence of messages using <code>f</code> and sends n responses taken
+   * from the generated message sequence. Implements the splitter EIP.
+   */
+  def split(f: Message => Seq[Message]) = responderKleisli {
+    (m: Message, k: MessageValidation => Unit) => {
+      try {
+        f(m) foreach { r => k(r.success) }
+      } catch {
+        case e: Exception => k(m.setException(e).fail)
+      }
+    }
+  }
+
+  /**
+   * Filters messages if <code>f</code> returns None and sends a response if
+   * <code>f</code> returns Some message. Allows providers of <code>f</code> to
+   * aggregate messages and continue processing with a combined message, for example.
+   * Implements the aggregator EIP.
    */
   def aggregate(f: Message => Option[Message]) = responderKleisli {
     (m: Message, k: MessageValidation => Unit) => {
@@ -99,14 +115,15 @@ trait CamelDslEip extends CamelConv {
   }
 
   /**
-   * A message filter that evaluates predicate <code>p</code>. Implements the filter EIP.
+   * A message filter that evaluates predicate <code>p</code>. If <code>p</code> evaluates
+   * to true a response is sent, otherwise the message is dropped. Implements the filter EIP.
    */
   def filter(p: Message => Boolean) = aggregate { m: Message =>
     if (p(m)) Some(m) else None
   }
 
   /**
-   * Creates a builder for a scatter-gather processor.
+   * Creates a builder for a scatter-gather processor.  Implements the scatter-gather EIP.
    *
    * @see ScatterDefinition
    */
@@ -121,9 +138,9 @@ trait CamelDslEip extends CamelConv {
 
     /**
      * Scatters messages to <code>destinations</code> and gathers and combines them using
-     * <code>combine</code>. Messages are scattered to <code>destinations</code> destinations
-     * using the concurrencyStartegy returned by <code>multicastStrategy</code>. Implements
-     * the scatter-gather EIP.
+     * <code>combine</code>. Messages are scattered to <code>destinations</code> using the
+     * concurrencyStartegy returned by <code>multicastStrategy</code>. Implements the
+     * scatter-gather EIP.
      *
      * @see scatter
      */
@@ -231,7 +248,7 @@ trait CamelDslRoute extends CamelConv {
     }
 
     private def processInOnly(exchange: Exchange, callback: AsyncCallback) = {
-      route(exchange.getIn.toMessage, ((mv: MessageValidation) => { /* ignore any result */ }))
+      route(exchange.getIn.toMessage.setOneway(true), ((mv: MessageValidation) => { /* ignore any result */ }))
       callback.done(true)
       true
     }
@@ -299,10 +316,13 @@ trait CamelDslAccess extends CamelConv {
     def response: MessageValidation = responsePromise(Strategy.Sequential).get
 
     /** Obtain response promise from responder r */
-    def responsePromise(implicit s: Strategy): Promise[MessageValidation] = {
-      val queue = new java.util.concurrent.ArrayBlockingQueue[MessageValidation](2)
+    def responsePromise(implicit s: Strategy): Promise[MessageValidation] = promise(responseQueue.take)
+
+    /** Obtain response queue from responder r */
+    def responseQueue: BlockingQueue[MessageValidation] = {
+      val queue = new java.util.concurrent.LinkedBlockingQueue[MessageValidation](10)
       r respond { mv => queue.put(mv) }
-      promise(queue.take)
+      queue
     }
   }
 
@@ -316,10 +336,15 @@ trait CamelDslAccess extends CamelConv {
    */
   class ValidationResponseAccessKleisli(p: MessageValidationResponderKleisli) {
     /** Obtain response from responder Kleisli p for message m (blocking) */
-    def responseFor(m: Message) = responsePromiseFor(m)(Strategy.Sequential).get
+    def responseFor(m: Message) =
+      new ValidationResponseAccess(p apply m.success).response
 
     /** Obtain response promise from responder Kleisli p for message m */
     def responsePromiseFor(m: Message)(implicit s: Strategy) =
       new ValidationResponseAccess(p apply m.success).responsePromise
+
+    /** Obtain response queue from responder Kleisli p for message m */
+    def responseQueueFor(m: Message) =
+      new ValidationResponseAccess(p apply m.success).responseQueue
   }
 }

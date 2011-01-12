@@ -60,10 +60,24 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
         to("jms:queue:test") >=> printMessage
       }
 
-      mock.expectedBodiesReceived("a-1-2", "b-1-2", "c-1-2")
+      mock.expectedBodiesReceivedInAnyOrder("a-1-2", "b-1-2", "c-1-2")
       template.sendBody("direct:test", "a")
       template.sendBody("direct:test", "b")
       template.sendBody("direct:test", "c")
+      mock.assertIsSatisfied
+    }
+
+    "acknowledge and background processing scenarios" in {
+      from("direct:ack") route {
+        oneway >=> to("jms:queue:background") >=> { m: Message => m.appendToBody("-ack") }
+      }
+
+      from("jms:queue:background") route {
+        appendToBody("-1") >=> to("mock:mock")
+      }
+
+      mock.expectedBodiesReceived("hello-1")
+      template.requestBody("direct:ack", "hello") must equal ("hello-ack")
       mock.assertIsSatisfied
     }
 

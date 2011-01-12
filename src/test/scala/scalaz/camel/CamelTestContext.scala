@@ -15,8 +15,10 @@
  */
 package scalaz.camel
 
+import collection.mutable.Map
+
 import org.apache.camel.component.mock.MockEndpoint
-import org.apache.camel.impl.{DefaultExchange, DefaultCamelContext}
+import org.apache.camel.impl.DefaultCamelContext
 
 /**
  * @author Martin Krasser
@@ -31,7 +33,17 @@ trait CamelTestContext {
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate
 
-  def mock = context.getEndpoint("mock:mock", classOf[MockEndpoint])
-
   implicit val router = new Router(context)
+
+  val mocks = Map[String, MockEndpoint]()
+  def mock(s: String) = {
+    mocks.get(s) match {
+      case Some(ep) => ep
+      case None     => {
+        val ep = context.getEndpoint("mock:%s" format s, classOf[MockEndpoint])
+        mocks.put(s, ep)
+        ep
+      }
+    }
+  }
 }

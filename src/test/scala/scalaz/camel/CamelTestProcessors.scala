@@ -46,7 +46,7 @@ object CamelTestProcessors {
   def appendToBody(o: Any)(implicit mgnt: ContextMgnt) = ap(appendToBodySync(o))
 
   /** Appends o to message body (sync processor) */
-  def appendToBodySync(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendBody(o)
+  def appendToBodySync(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendToBody(o)
 
   /** Prints message to stdout */
   def printMessage = ap(printMessageSync)
