@@ -32,7 +32,7 @@ package scalaz.camel
  *
  * @author Martin Krasser
  */
-object Camel extends CamelDslEip with CamelDslRoute with CamelDslAccess {
+object Camel extends DslEip with DslRoute with DslAccess {
   import org.apache.camel.Processor
   import scalaz.concurrent.Strategy
 

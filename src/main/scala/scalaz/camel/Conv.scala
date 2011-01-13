@@ -22,7 +22,7 @@ import scalaz._
 /**
  * @author Martin Krasser
  */
-trait CamelConv {
+trait Conv {
   import scalaz.concurrent.Strategy
   import Scalaz._
   import Message._
@@ -52,7 +52,7 @@ trait CamelConv {
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
     def respond(k: MessageValidation => Unit) = v match {
-      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* preserves MessageExchange */)))
+      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* experimental */)))
       case Failure(m) => dispatchStrategy.apply(k(Failure(m)))
     }
   }

@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue, CountDownLatch}
+import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue, CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
@@ -30,7 +30,7 @@ import concurrent.Strategy
 /**
  * @author Martin Krasser
  */
-trait CamelDslEip extends CamelConv {
+trait DslEip extends Conv {
 
   /**
    * Name of the position header needed used by scatter
@@ -191,7 +191,7 @@ trait CamelDslEip extends CamelConv {
 /**
  * @author Martin Krasser
  */
-trait CamelDslRoute extends CamelConv {
+trait DslRoute extends Conv {
 
   // ------------------------------------------
   //  Route initiation and endpoints
@@ -298,7 +298,7 @@ trait CamelDslRoute extends CamelConv {
 /**
  * @author Martin Krasser
  */
-trait CamelDslAccess extends CamelConv {
+trait DslAccess extends Conv {
 
   // ------------------------------------------
   //  Access to message processing results
@@ -313,7 +313,10 @@ trait CamelDslAccess extends CamelConv {
    */
   class ValidationResponseAccess(r: Responder[MessageValidation]) {
     /** Obtain response from responder r (blocking) */
-    def response: MessageValidation = responsePromise(Strategy.Sequential).get
+    def response: MessageValidation = responseQueue.take
+
+    /** Obtain response from responder r (blocking with timeout) */
+    def response(timeout: Long, unit:  TimeUnit): MessageValidation = responseQueue.poll(timeout, unit)
 
     /** Obtain response promise from responder r */
     def responsePromise(implicit s: Strategy): Promise[MessageValidation] = promise(responseQueue.take)
@@ -338,6 +341,10 @@ trait CamelDslAccess extends CamelConv {
     /** Obtain response from responder Kleisli p for message m (blocking) */
     def responseFor(m: Message) =
       new ValidationResponseAccess(p apply m.success).response
+
+    /** Obtain response from responder Kleisli p for message m (blocking with timeout) */
+    def responseFor(m: Message, timeout: Long, unit:  TimeUnit) =
+      new ValidationResponseAccess(p apply m.success).response(timeout: Long, unit:  TimeUnit)
 
     /** Obtain response promise from responder Kleisli p for message m */
     def responsePromiseFor(m: Message)(implicit s: Strategy) =

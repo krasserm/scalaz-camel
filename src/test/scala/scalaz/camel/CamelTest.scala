@@ -373,6 +373,16 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       mock("mock").assertIsSatisfied
     }
 
+    "sharing of routes" in {
+      val r = appendToBody("-1") >=> appendToBody("-2")
+
+      from ("direct:test-50a") route r
+      from ("direct:test-50b") route r
+
+      template.requestBody("direct:test-50a", "a") must equal ("a-1-2")
+      template.requestBody("direct:test-50b", "b") must equal ("b-1-2")
+    }
+
     "preserving the message exchange even if a processor drops it" in {
       // new message that doesn't contain exchange of m
       val badguy1 = (m: Message) => new Message("bad")
