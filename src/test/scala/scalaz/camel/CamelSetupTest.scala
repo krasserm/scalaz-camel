@@ -15,7 +15,6 @@
  */
 package scalaz.camel
 
-import org.apache.camel.builder.RouteBuilder
 import org.apache.camel.impl.DefaultCamelContext
 
 import org.scalatest.matchers.MustMatchers

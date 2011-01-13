@@ -20,6 +20,18 @@ import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
 import scalaz._
 
 /**
+ * Provides converters for constructing Kleisli routes from
+ *
+ * <ul>
+ * <li>asynchronous message processing functions (Scala, see <code>MessageProcessor</code>)</li>
+ * <li>synchronous Camel processors</li>
+ * <li>asynchronous Camel processors</li>
+ * <li>synchronous endpoint producers</li>
+ * <li>asynchronous endpoint producers</li>
+ * </ul>
+ *
+ * Related implicit conversions are provided by the <code>Camel</code> object.
+ *
  * @author Martin Krasser
  */
 trait Conv {
@@ -27,15 +39,32 @@ trait Conv {
   import Scalaz._
   import Message._
 
+  /**
+   * Type of a failed or successful response message. <strong>Will be replaced by
+   * <code>Either[Message, Message]</code> with scalaz versions greater than 5.0.</strong>
+   */
   type MessageValidation = Validation[Message, Message]
+
+  /**
+   * Type of a (potentially asynchronous) message processor that passes a message validation
+   * result to a continuation of type <code>MessageValidation => Unit</code>. A CPS message
+   * processor.
+   */
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
+
+  /**
+   * Kleisli type of monadic <code>MessageValidation => MessageValidationResponder</code> functions.
+   */
   type MessageValidationResponderKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
 
-  val updateExchange = (m1: Message) => (m2: Message) =>
+  /**
+   * Set the message exchange of m2 on m1 unless an exchange update should be skipped.
+   */
+  private val updateExchange = (m1: Message) => (m2: Message) =>
     (if (!m1.skipExchangeUpdate) m1.setExchangeFrom(m2) else m1).setSkipExchangeUpdate(false)
 
   /**
-   * Concurrency strategy for dispatching messages along the processor chain (i.e. route).
+   *  Concurrency strategy for dispatching messages along the processor chain (i.e. route).
    */
   protected def dispatchStrategy: Strategy
 
@@ -46,9 +75,11 @@ trait Conv {
   implicit def ExceptionSemigroup: Semigroup[Message] = semigroup((m1, m2) => m1)
 
   /**
-   * A continuation monad for constructing routes from asynchronous message processors.
-   * It applies the concurrency strategy returned by <code>dispatchStrategy</code> for
-   * dispatching messages along the processor chain (i.e. route)
+   * A continuation monad for constructing routes from CPS message processors. It applies the
+   * concurrency strategy returned by <code>dispatchStrategy</code> for dispatching messages
+   * along the processor chain (i.e. route). Success messages are dispatched to the next processor
+   * which in turn passes its result to continuation <code>k</code>. Failure messages are passed
+   * directly to continuation k (by-passing the remaining processors in the chain).
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
     def respond(k: MessageValidation => Unit) = v match {
@@ -57,25 +88,51 @@ trait Conv {
     }
   }
 
+  /**
+   * Creates a responder Kleisli from a CPS message processor
+   */
   def responderKleisli(p: MessageProcessor): MessageValidationResponderKleisli =
     kleisli((v: MessageValidation) => new MessageValidationResponder(v, p).map(r => r))
 
+  /**
+   * Creates a CPS message processor from a Responder Kleisli
+   */
   def messageProcessor(p: MessageValidationResponderKleisli): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => p apply m.success respond k
 
+  /**
+   * Creates a CPS message processor from a direct-style message processor. The CPS
+   * processor executes the direct-style message processor synchronously.
+   */
   def messageProcessor(p: Message => Message): MessageProcessor =
     messageProcessor(p, Strategy.Sequential)
 
+  /**
+   * Creates an CPS message processor from a direct-style message processor. The CPS
+   * processor executes the direct-style processor using the concurrency strategy
+   * <code>s</code>.
+   */
   def messageProcessor(p: Message => Message, s: Strategy): MessageProcessor = (m: Message, k: MessageValidation => Unit) =>
     s.apply { try { k(p(m).success) } catch { case e: Exception => k(m.setException(e).fail) } }
 
+  /**
+   * Creates a CPS message processor from a Camel message producer obtained from endpoint
+   * defined by URI. This method has a side-effect because it registers the created producer
+   * at the Camel context for lifecycle management.
+   */
   def messageProcessor(uri: String, em: EndpointMgnt, cm: ContextMgnt): MessageProcessor =
     messageProcessor(em.createProducer(uri), cm)
 
+  /**
+   * Creates a CPS message processor from a (synchronous or asynchronous) Camel processor.
+   */
   def messageProcessor(p: Processor, cm: ContextMgnt): MessageProcessor =
     if (p.isInstanceOf[AsyncProcessor]) messageProcessor(p.asInstanceOf[AsyncProcessor], cm)
     else messageProcessor(new ProcessorAdapter(p), cm)
 
+  /**
+   * Creates a CPS message processor from an asynchronous Camel processor.
+   */
   def messageProcessor(p: AsyncProcessor, cm: ContextMgnt): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
     import org.apache.camel.impl.DefaultExchange
 
@@ -99,6 +156,9 @@ trait Conv {
     })
   }
 
+  /**
+   * An <code>AsyncProcessor</code> interface for a (synchronous) Camel <code>Processor</code>.
+   */
   private class ProcessorAdapter(p: Processor) extends AsyncProcessor {
     def process(exchange: Exchange) = throw new UnsupportedOperationException()
     def process(exchange: Exchange, callback: AsyncCallback) = {

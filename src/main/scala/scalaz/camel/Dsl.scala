@@ -15,7 +15,7 @@
  */
 package scalaz.camel
 
-import java.util.concurrent.{ArrayBlockingQueue, BlockingQueue, CountDownLatch, TimeUnit}
+import java.util.concurrent.{BlockingQueue, CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.camel.{Exchange, AsyncCallback, AsyncProcessor}
@@ -28,12 +28,15 @@ import concurrent.Promise
 import concurrent.Strategy
 
 /**
+ * Enterprise integration patterns (EIPs) that can be composed via Kleisli composition (>=>).
+ *
  * @author Martin Krasser
  */
 trait DslEip extends Conv {
 
   /**
-   * Name of the position header needed used by scatter
+   * Name of the position message header needed by scatter-gather. Needed to
+   * preserve the order of messages that are distributed to destinations.
    */
   val Position = "scalaz.camel.multicast.position"
 
@@ -42,10 +45,6 @@ trait DslEip extends Conv {
    * with the multicast and scatter-gather EIPs.
    */
   protected def multicastStrategy: Strategy
-
-  // ------------------------------------------
-  //  EIPs
-  // ------------------------------------------
 
   /**
    * Converts messages to one-way messages.
@@ -116,7 +115,8 @@ trait DslEip extends Conv {
 
   /**
    * A message filter that evaluates predicate <code>p</code>. If <code>p</code> evaluates
-   * to true a response is sent, otherwise the message is dropped. Implements the filter EIP.
+   * to <code>true</code> a response is sent, otherwise the message is dropped. Implements
+   * the filter EIP.
    */
   def filter(p: Message => Boolean) = aggregate { m: Message =>
     if (p(m)) Some(m) else None
@@ -139,7 +139,7 @@ trait DslEip extends Conv {
     /**
      * Scatters messages to <code>destinations</code> and gathers and combines them using
      * <code>combine</code>. Messages are scattered to <code>destinations</code> using the
-     * concurrencyStartegy returned by <code>multicastStrategy</code>. Implements the
+     * concurrency strategy returned by <code>multicastStrategy</code>. Implements the
      * scatter-gather EIP.
      *
      * @see scatter
@@ -151,7 +151,7 @@ trait DslEip extends Conv {
   }
 
   /** 
-   * Marks messages as failed by setting exception <code>e</code> on MessageExchange
+   * Marks messages as failed by setting exception <code>e</code> on <code>MessageExchange</code>.
    */
   def markFailed(e: Exception): MessageProcessor = messageProcessor(m => m.setException(e))
 
@@ -160,7 +160,10 @@ trait DslEip extends Conv {
   //  Internal
   // ------------------------------------------
 
-  /** Creates a function that scatters messages to destinations and gathers and combines the responses */
+  /**
+   * Creates a CPS processor that distributes messages to destinations (using multicast) and gathers
+   * and combines the responses using an aggregator with <code>gatherFunction</code>.
+   */
   private def multicastProcessor(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
     (m: Message, k: MessageValidation => Unit) => {
       val sgm = multicast(destinations: _*)
@@ -170,7 +173,10 @@ trait DslEip extends Conv {
     }
   }
 
-  /** Creates a function that gathers and combines multicast responses */
+  /**
+   * Creates a function that gathers and combines multicast responses. This method has a side-effect
+   * because it collects messages in a data structure that is created for each created gather function.
+   */
   private def gatherFunction(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
     val ct = new AtomicInteger(count)
     val ma = Array.fill[Message](count)(null)
@@ -189,45 +195,91 @@ trait DslEip extends Conv {
 }
 
 /**
+ * DSL for route initiation and endpoint management.
+ *
  * @author Martin Krasser
  */
 trait DslRoute extends Conv {
 
-  // ------------------------------------------
-  //  Route initiation and endpoints
-  // ------------------------------------------
-
-  /** Creates an endpoint producer */
+  /** 
+   * Creates a CPS processor that acts as a producer to the endpoint represented by <code>uri</code>.
+   * This method has a side-effect because it registers the created producer at the Camel context for
+   * lifecycle management.
+   */
   def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = messageProcessor(uri, em, cm)
 
-  /** Defines the starting point of a route from the given endpoint */
+  /**
+   * Creates a context for a connecting a Kleisli route to the consumer of endpoint represented by
+   * <code>uri</code>.
+   *
+   * @see MainRouteDefinition
+   */
   def from(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = new MainRouteDefinition(uri, em, cm)
 
-  /** Represents the starting point of a route from an endpoint defined by <code>uri</code> */
+  /**
+   * Context for a connecting a Kleisli route to the consumer of endpoint represented by <code>uri</code>.
+   *
+   * @see from
+   */
   class MainRouteDefinition(uri: String, em: EndpointMgnt, cm: ContextMgnt) {
-    /** Connects a route to the endpoint consumer */
-    def route(r: MessageValidationResponderKleisli): ErrorRouteDefinition = {
+    /**
+     * Connects a Kleisli route to the consumer of the endpoint represented by <code>uri</code>. This method has
+     * a side-effect because it creates and registers an endpoint consumer at the Camel context for lifecycle
+     * management. Returns a context for adding error handlers.
+     *
+     * @see from
+     * @see ErrorRouteDefinition
+     */
+    def route(r: MessageValidationResponderKleisli): ErrorHandlerDefinition = {
       val processor = new RouteProcessor(r)
       val consumer = em.createConsumer(uri, processor)
       processor
     }
   }
 
-  /** Respresents the starting point of error handling routes for given exception */
-  trait ErrorRouteDefinition {
+  /**
+   * Context for adding error handler.
+   */
+  trait ErrorHandlerDefinition {
+    /**
+     * Type alias for error handling partial function.
+     */
     type Handler = PartialFunction[Exception, MessageValidationResponderKleisli]
 
-    var handler: Option[Handler] = None
+    /**
+     * Optional error handler. By default, there's to error handler.
+     */
+    protected var handler: Option[Handler] = None
 
+    /**
+     * Sets the error handler.
+     */
     def handle(handler: Handler) {
       this.handler = Some(handler)
     }
   }
 
-  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor with ErrorRouteDefinition {
+  /**
+   * Processor that mediates between endpoint consumers and Kleisli routes. <strong>For Kleisli routes
+   * that may not produce a response (e.g. because of a contained filter or aggregator), an in-only
+   * message exchange should be used</strong>. Sending an in-out exchange will cause the client to wait
+   * forever unless an endpoint-specific timeout mechanism is implemented. When sending an in-only exchange
+   * the Kleisli route is applied to the exchange's in-message and the exchange is completed immediately
+   * (fire-and-forget).
+   * <p>
+   * Design hint: routes that receive in-out exchanges <strong>and</strong> contain filters or aggregators
+   * could follow a <i>receive-acknowledge and background processing</i> strategy as shown in CamelJmsTest,
+   * for example (TODO: link to Wiki).
+   * <p>
+   * Not returning responses, when messages were filtered out or swallowed by aggregators, was a conscious
+   * design decision for reasons of consistency between CPS and direct-style usage of routes.
+   */
+  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor with ErrorHandlerDefinition {
     import RouteProcessor._
 
-    /** Synchronous process */
+    /**
+     * Synchronous message processing.
+     */
     def process(exchange: Exchange) = {
       val latch = new CountDownLatch(1)
       process(exchange, new AsyncCallback() {
@@ -238,7 +290,10 @@ trait DslRoute extends Conv {
       latch.await
     }
 
-    /** Asynchronous process */
+    /**
+     * Asynchronous message processing (may be synchronous as well if all message processor are synchronous
+     * processors and all concurrency strategies are configured to be <code>Sequential</code>).
+     */
     def process(exchange: Exchange, callback: AsyncCallback) =
       if (exchange.getPattern.isOutCapable) processInOut(exchange, callback) else processInOnly(exchange, callback)
 
@@ -296,13 +351,12 @@ trait DslRoute extends Conv {
 }
 
 /**
+ * DSL for programmatic access to responses generated by Kleisli routes (i.e. when no endpoint
+ * consumer is created via <code>from(...)</code>).
+ *
  * @author Martin Krasser
  */
 trait DslAccess extends Conv {
-
-  // ------------------------------------------
-  //  Access to message processing results
-  // ------------------------------------------
 
   /**
    * Provides convenient access to (asynchronous) message validation responses
@@ -335,7 +389,7 @@ trait DslAccess extends Conv {
    * to a message m. Hides continuation-passing style (CPS) usage of responder
    * Kleisli p.
    *
-   * @see responderKleisliToResponseAccessKleisli
+   * @see Camel.responderKleisliToResponseAccessKleisli
    */
   class ValidationResponseAccessKleisli(p: MessageValidationResponderKleisli) {
     /** Obtain response from responder Kleisli p for message m (blocking) */

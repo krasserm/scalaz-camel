@@ -30,29 +30,37 @@ object CamelTestProcessors {
   /** Concurrency strategy for each created processor (defaults to Strategy.Sequential) */
   var processorConcurrencyStrategy: Strategy = Strategy.Sequential
 
-  /** Fails with Exception and error message em. */
-  def failWith(em: String): MessageProcessor = ap(failWithSync(em))
+  //
+  // Direct-style processors: Message => Message (may throw exception)
+  //
 
-  /** Fails with Exception and error message em (sync processor). */
-  def failWithSync(em: String): Message => Message = (m: Message) => throw new Exception(em)
+  /** Fails with Exception and error message em (direct-style processor). */
+  def ds_failWith(em: String): Message => Message = (m: Message) => throw new Exception(em)
+
+  /** Appends o to message body (direct-style processor) */
+  def ds_appendToBody(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendToBody(o)
+
+  /** Prints message to stdout (direct-style processor) */
+  def ds_printMessage = (m: Message) => { println(m); m }
+
+  //
+  // CPS (continuation-passing style) processors: (Message, MessageValidation => Unit) => Unit
+  //
+
+  /** Fails with Exception and error message em. */
+  def failWith(em: String): MessageProcessor = cps(ds_failWith(em))
 
   /** Fails with exception e */
-  def failWith(e: Exception): MessageProcessor = ap(m => throw e)
+  def failWith(e: Exception): MessageProcessor = cps(m => throw e)
 
   /** Converts message body to String */
-  def convertBodyToString(implicit mgnt: ContextMgnt) = ap(m => m.bodyTo[String])
+  def convertBodyToString(implicit mgnt: ContextMgnt) = cps(m => m.bodyTo[String])
 
   /** Appends o to message body */
-  def appendToBody(o: Any)(implicit mgnt: ContextMgnt) = ap(appendToBodySync(o))
-
-  /** Appends o to message body (sync processor) */
-  def appendToBodySync(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendToBody(o)
+  def appendToBody(o: Any)(implicit mgnt: ContextMgnt) = cps(ds_appendToBody(o))
 
   /** Prints message to stdout */
-  def printMessage = ap(printMessageSync)
-
-  /** Prints message to stdout (sync processor) */
-  def printMessageSync = (m: Message) => { println(m); m }
+  def printMessage = cps(ds_printMessage)
 
   /**  Repeats message body (using String concatenation) */
   def repeatBody = new RepeatBodyProcessor(processorConcurrencyStrategy)
@@ -75,6 +83,6 @@ object CamelTestProcessors {
     def sp = this.asInstanceOf[Processor]
   }
 
-  /** Creates an asynchronous processor from a Message => Message function */
-  def ap(p: Message => Message): MessageProcessor = Camel.messageProcessor(p, processorConcurrencyStrategy)
+  /** Creates an CPS processor direct-style processor */
+  def cps(p: Message => Message): MessageProcessor = Camel.messageProcessor(p, processorConcurrencyStrategy)
 }

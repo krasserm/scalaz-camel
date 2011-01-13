@@ -15,9 +15,6 @@
  */
 package scalaz.camel
 
-import org.apache.camel.builder.RouteBuilder
-import org.apache.camel.{Exchange, Predicate}
-
 import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
 
@@ -45,12 +42,12 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
   "scalaz.camel.Camel" should support {
 
-    "Kleisli composition of asynchonous message processor functions" in {
+    "Kleisli composition of CPS message processors" in {
       appendToBody("-1") >=> appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
     }
 
-    "Kleisli composition of synchonous message processor functions" in {
-      appendToBodySync("-1") >=> appendToBodySync("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
+    "Kleisli composition of direct-style message processors" in {
+      ds_appendToBody("-1") >=> ds_appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
     }
 
     "Kleisli composition of asynchonous Camel message processors" in {
@@ -61,26 +58,26 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       repeatBody.sp >=> repeatBody.sp responseFor Message("a") must equal(Success(Message("aaaa")))
     }
 
-    "Kleisli composition of (a)synchronous Camel endpoint processors" in {
+    "Kleisli composition of Camel endpoint producers" in {
       to("direct:predef-1") >=> to("direct:predef-2") responseFor Message("a") must equal(Success(Message("a-p1-p2")))
     }
 
     "Kleisli composition of different types of message processors" in {
-      repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> appendToBodySync("-2") >=> to("direct:predef-1") responseFor
+      repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> ds_appendToBody("-2") >=> to("direct:predef-1") responseFor
          Message("a") must equal(Success(Message("aaaa-1-2-p1")))
     }
 
-    "Kleisli composition of asynchronous processors defined inline" in {
+    "Kleisli composition of CPS processors defined inline" in {
       val route = appendToBody("-1") >=> { (m: Message, k: MessageValidation => Unit) => k(m.appendToBody("-x").success) }
       route responseFor Message("a") must equal(Success(Message("a-1-x")))
     }
 
-    "Kleisli composition of synchronous processors defined inline" in {
+    "Kleisli composition of direct-style processors defined inline" in {
       val route = appendToBody("-1") >=> { m: Message => m.appendToBody("-y") }
       route responseFor Message("a") must equal(Success(Message("a-1-y")))
     }
 
-    "failure reporting for asynchronous processors" in {
+    "failure reporting with CPS processors" in {
       failWith("1") >=> failWith("2") responseFor Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
@@ -90,8 +87,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "failure reporting for synchronous processors (that throw exceptions)" in {
-      failWithSync("1") >=> failWithSync("2") responseFor Message("a") match {
+    "failure reporting with direct-style processors (that throw exceptions)" in {
+      ds_failWith("1") >=> ds_failWith("2") responseFor Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -114,8 +111,17 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
+    "application of Kleisli routes using response queues" in {
+      val queue = appendToBody("-1") >=> appendToBody("-2") responseQueueFor Message("a")
+
+      queue.take match {
+        case Success(m) => m.body must equal("a-1-2")
+        case Failure(m) => fail("unexpected failure")
+      }
+    }
+
     "application of Kleisli routes using continuation-passing style (CPS)" in {
-      val queue = new java.util.concurrent.ArrayBlockingQueue[MessageValidation](10)
+      val queue = new java.util.concurrent.LinkedBlockingQueue[MessageValidation](10)
       appendToBody("-1") >=> appendToBody("-2") apply Message("a").success respond { mv => queue.put(mv) }
       queue.take match {
         case Success(m) => m.body must equal("a-1-2")
@@ -124,9 +130,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "message comsumption from endpoints" in {
-      from("direct:test-1") route {
-        appendToBody("-1") >=> appendToBody("-2")
-      }
+      from("direct:test-1") route { appendToBody("-1") >=> appendToBody("-2") }
       template.requestBody("direct:test-1", "test") must equal ("test-1-2")
     }
 
@@ -156,13 +160,14 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       from("direct:test-3") route {
         failWith(new TestException1("failed"))
       } handle {
-        case e: Exception => to("mock:mock") >=> markFailed(e)
+        case e: Exception => to("mock:mock") >=> markFailed(e) /* causes producer template to throw exception */
       }
 
       mock("mock").expectedBodiesReceived("a")
 
       try {
-        template.requestBody("direct:test-3", "a"); fail("exception expected")
+        template.requestBody("direct:test-3", "a")
+        fail("exception expected")
       } catch {
         case e: Exception => {
           val cause = e.getCause
@@ -188,13 +193,15 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
 
       try {
-        template.requestBody("direct:test-4a", "a"); fail("exception expected")
+        template.requestBody("direct:test-4a", "a")
+        fail("exception expected")
       } catch {
         case e: Exception => e.getCause.getMessage must equal ("x")
       }
 
       try {
-        template.requestBody("direct:test-4b", "a"); fail("exception expected")
+        template.requestBody("direct:test-4b", "a")
+        fail("exception expected")
       } catch {
         case e: Exception => e.getCause.getMessage must equal ("x")
       }
@@ -211,7 +218,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-10", "b") must equal ("b-1-4-5-done")
     }
 
-    "(concurrent) scatter-gather" in {
+    "scatter-gather" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
       from("direct:test-11") route {
@@ -225,7 +232,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-11", "a") must equal ("a-1-2-3 + a-1-4-5 + a-1-6-7 done")
     }
 
-    "(concurrent) scatter-gather that fails if one of the recipients fail" in {
+    "scatter-gather that fails if one of the recipients fail" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
       from("direct:test-12") route {
@@ -234,8 +241,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           appendToBody("-4") >=> failWith("y")
         ).gather(combine) >=> appendToBody(" done")
       }
+
       try {
-        template.requestBody("direct:test-12", "a"); fail("exception expected")
+        template.requestBody("direct:test-12", "a")
+        fail("exception expected")
       } catch {
         case e: Exception => {
           // test passed but reported exception message can be either 'x'
@@ -250,11 +259,11 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "usage of Kleisli routes inside message processors" in {
-      // asynchronous message processor (implementation uses continuation-passing style)
+      // CPS message processor doing CPS application of Kleisli route
       val composite1: MessageProcessor = (m: Message, k: MessageValidation => Unit) =>
         appendToBody("-n1") >=> appendToBody("-n2") apply m.success respond k
 
-      // synchronous message processor (synchronously executes contained route)
+      // direct-style message processor (blocks contained until route generated response)
       val composite2: Message => Message = (m: Message) =>
         appendToBody("-n3") >=> appendToBody("-n4") responseFor m match {
           case Success(m) => m
@@ -285,7 +294,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       promise.get must equal(Success(Message("test-1-2 + test-3-4")))
     }
 
-    "(concurrent) multicast" in {
+    "multicast" in {
       from("direct:test-30") route {
         appendToBody("-1") >=> multicast(
           appendToBody("-2") >=> to("mock:mock1"),
@@ -302,7 +311,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       mock("mock2").assertIsSatisfied
     }
 
-    "(concurrent) multicast with a failing destination" in {
+    "multicast with a failing destination" in {
       from("direct:test-31") route {
         appendToBody("-1") >=> multicast(
           appendToBody("-2"),
@@ -322,10 +331,9 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "splitting of messages" in {
-      val splitter = (m: Message) => for (i <- 1 to 3) yield { m.appendToBody("-%s" format i) }
-      from("direct:test-35") route {
-        split(splitter) >=> appendToBody("-done") >=> to("mock:mock")
-      }
+      val splitLogic = (m: Message) => for (i <- 1 to 3) yield { m.appendToBody("-%s" format i) }
+
+      from("direct:test-35") route { split(splitLogic) >=> appendToBody("-done") >=> to("mock:mock") }
 
       mock("mock").expectedBodiesReceivedInAnyOrder("a-1-done", "a-2-done", "a-3-done")
 
@@ -335,6 +343,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "aggregation of messages" in {
+
+      // Waits for three messages with a 'keep' header.
+      // At arrival of the third message, a new Message
+      // with body 'aggregated' is returned.
       def waitFor(count: Int) = {
         val counter = new java.util.concurrent.atomic.AtomicInteger(0)
         (m: Message) => {
@@ -374,6 +386,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "sharing of routes" in {
+
+      // nothing specific to scalaz-camel
+      // just demonstrates function reuse
+
       val r = appendToBody("-1") >=> appendToBody("-2")
 
       from ("direct:test-50a") route r
@@ -384,12 +400,15 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "preserving the message exchange even if a processor drops it" in {
-      // new message that doesn't contain exchange of m
+      // Function that returns *new* message that doesn't contain the exchange of
+      // the input message (it contains a new default exchange). The exchange of
+      // the input message will be set on the result message by the MessageValidationResponder
       val badguy1 = (m: Message) => new Message("bad")
 
-      // only a combined creation of a new Message with either setException or setOneway
-      // requires an explicit setting of the message context from the input message (only
-      // if it does
+      
+      // Function that returns a *new* message on which setException is called as well.
+      // Returning a new message *and* calling either setException or setOneway required
+      // explicit setting on the exchange from the input message as well.
       val badguy2 = (m: Message) => new Message("bad").setExchangeFrom(m).setException(new TestException1("x"))
 
       val route1 = appendToBody("-1") >=> badguy1 >=> appendToBody("-2")
@@ -410,6 +429,38 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           m.body must equal ("bad-2")
         }
       }
+    }
+
+    "proper correlation of (concurrent) request and response messages" in {
+      import CamelTestProcessors.{processorConcurrencyStrategy => s}
+
+      // Note that there is no explicit correlation of request and response messages using correlation
+      // identifiers, for example. Every application of a Kleisli route to a message maintains that
+      // message (and derived responses) in context of a responder monad (the a computational context
+      // for a single message (flow) on the message-processing route). This ensures proper isolation of
+      // individual message exchanges.
+
+      def conditionalDelay(delay: Long, body: String): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
+        if (m.body == body)
+          s.apply { Thread.sleep(delay); k(m.success) }
+        else
+          s.apply { k(m.success) }
+      }
+
+      val r = conditionalDelay(1000, "a") >=> conditionalDelay(1000, "x") >=> appendToBody("-done")
+
+      from("direct:test-55") route r
+
+      val a = Strategy.Naive.apply { template.requestBody("direct:test-55", "a") }
+      val b = Strategy.Naive.apply { template.requestBody("direct:test-55", "b") }
+      val x = Strategy.Naive.apply { r responseFor Message("x") }
+      val y = Strategy.Naive.apply { r responseFor Message("y") }
+
+      y() must equal (Success(Message("y-done")))
+      x() must equal (Success(Message("x-done")))
+
+      b() must equal ("b-done")
+      a() must equal ("a-done")
     }
   }
   

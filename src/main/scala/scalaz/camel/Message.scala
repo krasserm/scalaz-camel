@@ -26,8 +26,8 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
   private val SkipExchangeUpdate = "scalaz.camel.update.exchange.skip"
 
-  // TODO: make Message a parameterized type
-  // TODO: make Message an instance of Functor
+  // TODO: consider making Message a parameterized type
+  // TODO: consider making Message an instance of Functor
 
   val exchange = MessageExchange()
 
@@ -68,7 +68,7 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
     Message(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body), headers, exchange)
 
   // TODO: remove once Message is a Functor
-  def transformBody[A](transformer: A => Any)(implicit m: Manifest[A], mgnt: ContextMgnt) =
+  def transform[A](transformer: A => Any)(implicit m: Manifest[A], mgnt: ContextMgnt) =
     setBody(transformer(bodyAs[A]))
 
   // TODO: remove once Message is a Functor
@@ -93,19 +93,8 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 }
 
 /**
- * @author Martin Krasser
- */
-object Message {
-  /** Creates a Converter from a Camel message */
-  implicit def camelMessageToConverter(cm: CamelMessage): MessageConverter = new MessageConverter(cm)
-
-  /** Create a Message with body, headers and a Camel exchange */
-  private[camel] def apply(body: Any, headers: Map[String, Any], exch: MessageExchange): Message = new Message(body, headers) {
-    override val exchange = exch
-  }
-}
-
-/**
+ * An immutable representation of a Camel exchange.
+ *
  * @author Martin Krasser
  */
 case class MessageExchange(oneway: Boolean, exception: Option[Exception]) {
@@ -117,18 +106,29 @@ case class MessageExchange(oneway: Boolean, exception: Option[Exception]) {
 /**
  * @author Martin Krasser
  */
-object MessageExchange {
-  /** Creates a Converter from a Camel exchange */
-  implicit def camelExchangeToConverter(ce: Exchange) = new MessageExchangeConverter(ce)
+object Message {
+  /** Creates a MessageConverter from a Camel message */
+  implicit def camelMessageToConverter(cm: CamelMessage): MessageConverter = new MessageConverter(cm)
 
-  /** Create a default MessageExchange */
-  def apply(): MessageExchange = MessageExchange(false, None)
-
+  /** Create a Message with body, headers and a message exchange */
+  def apply(body: Any, headers: Map[String, Any], exch: MessageExchange): Message = new Message(body, headers) {
+    override val exchange = exch
+  }
 }
 
 /**
- * Converts between <code>scalaz.camel.Message</code> and
- * <code>org.apache.camel.Message</code>.
+ * @author Martin Krasser
+ */
+object MessageExchange {
+  /** Creates a MessageExchangeConverter from a Camel exchange */
+  implicit def camelExchangeToConverter(ce: Exchange) = new MessageExchangeConverter(ce)
+
+  /** Create a default MessageExchange with oneway set to false and no exception */
+  def apply(): MessageExchange = MessageExchange(false, None)
+}
+
+/**
+ * Converts between <code>scalaz.camel.Message</code> and <code>org.apache.camel.Message</code>.
  *
  * @author Martin Krasser
  */
@@ -151,6 +151,8 @@ class MessageConverter(val cm: CamelMessage) {
 }
 
 /**
+ * Converts between <code>scalaz.camel.MessageExchange</code> and <code>org.apache.camel.Exchange</code>.
+ *
  * @author Martin Krasser
  */
 class MessageExchangeConverter(val ce: Exchange) {

@@ -15,9 +15,6 @@
  */
 package scalaz.camel
 
-import org.apache.camel.builder.RouteBuilder
-import org.apache.camel.impl.DefaultCamelContext
-
 import org.scalatest.matchers.MustMatchers
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, WordSpec}
 
@@ -67,7 +64,7 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
       mock.assertIsSatisfied
     }
 
-    "acknowledge and background processing scenarios" in {
+    "receive-acknowledge and background processing scenarios" in {
       from("direct:ack") route {
         oneway >=> to("jms:queue:background") >=> { m: Message => m.appendToBody("-ack") }
       }

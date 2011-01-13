@@ -39,25 +39,24 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
   "scalaz.camel.Camel" should support {
     "non-blocking routing with asynchronous Jetty endpoints" in {
 
-      // non-blocking server route using
-      // - Jetty-continuation enabled endpoint and
-      // - asynchronous message processors
+      // non-blocking server route with asynchronous CPS processors
+      // and a Jetty endpoint using Jetty continuations.
       from("jetty:http://localhost:8766/test") route {
         convertBodyToString >=> repeatBody
       }
 
-      // non-blocking client route using
-      // - asynchronous Jetty HTTP client and
-      // - asynchronous message processor
+      // non-blocking server route with asynchronous CPS processors
+      // and a Jetty endpoint using an asynchronous HTTP client.
       from("direct:test-1") route {
         to("jetty:http://localhost:8766/test") >=> appendToBody("-done")
       }
 
-      // the only blocking operation (waits for an answer)
+      // the only blocking operation here (waits for an answer)
       template.requestBody("direct:test-1", "test") must equal("testtest-done")
     }
 
-    "caching of input streams so that original message can be used in error handlers" in {
+    "passing the latest update of messages to error handlers" in {
+      // latest update before failure is conversion of body to string
       from("jetty:http://localhost:8761/test") route {
         convertBodyToString >=> failWith("failure")
       } handle {

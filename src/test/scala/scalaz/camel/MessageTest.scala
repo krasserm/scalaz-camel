@@ -61,7 +61,7 @@ class MessageTest extends WordSpec with BeforeAndAfterAll with MustMatchers {
 
     "transformation of the body using a transformer function" in {
       val message = Message("a" , Map("A" -> "1"))
-      message.transformBody[String](body => body + "b") must equal(Message("ab", Map("A" -> "1")))
+      message.transform[String](body => body + "b") must equal(Message("ab", Map("A" -> "1")))
     }
 
     "appending to the body using a string representation" in {
