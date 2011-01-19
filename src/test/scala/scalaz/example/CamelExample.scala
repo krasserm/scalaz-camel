@@ -82,10 +82,10 @@ object CamelExample extends MustMatchers {
     // order placement route consuming from direct:place-order endpoint (incl. error handler)
     from("direct:place-order") route placeOrderRoute handle {
       case e: ValidationException => { m: Message => m.setBody("order validation failed")}
-      case e: Exception           => { m: Message => m.setBody("order processing failed")} >=> markFailed(e)
+      case e: Exception           => { m: Message => m.setBody("general processing error")} >=> markFailed(e)
     }
 
-    // order processing route (background processing)
+    // order processing route
     from("jms:queue:valid") route {
       split { m: Message => for (item <- m.bodyAs[PurchaseOrder].items) yield m.setBody(item) } >=> choose {
         case Message(PurchaseOrderItem(_, "books", _, _), _) => orderItemToTuple >=> to("mock:books")
