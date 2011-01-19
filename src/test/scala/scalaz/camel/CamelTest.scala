@@ -216,6 +216,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
       template.requestBody("direct:test-10", "a") must equal ("a-1-2-3-done")
       template.requestBody("direct:test-10", "b") must equal ("b-1-4-5-done")
+      template.requestBody("direct:test-10", "c") must equal ("c-1-done")
     }
 
     "scatter-gather" in {

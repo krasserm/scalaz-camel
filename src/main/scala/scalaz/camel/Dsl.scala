@@ -60,8 +60,14 @@ trait DslEip extends Conv {
    * Does routing based on pattern matching of messages. Implements the content-based
    * router EIP.
    */
-  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli =
-    responderKleisli((m: Message, k: MessageValidation => Unit) => messageProcessor(f(m))(m, k))
+  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli = responderKleisli {
+    (m: Message, k: MessageValidation => Unit) => {
+      f.lift(m) match {
+        case Some(r) => messageProcessor(r)(m, k)
+        case None    => k(m.success)
+      }
+    }
+  }
 
 
   /**
