@@ -32,7 +32,7 @@ import concurrent.Strategy
  *
  * @author Martin Krasser
  */
-trait DslEip extends Conv {
+trait DslEip { this: Conv =>
 
   /**
    * Name of the position message header needed by scatter-gather. Needed to
@@ -205,7 +205,7 @@ trait DslEip extends Conv {
  *
  * @author Martin Krasser
  */
-trait DslRoute extends Conv {
+trait DslRoute { this: Conv =>
 
   /** 
    * Creates a CPS processor that acts as a producer to the endpoint represented by <code>uri</code>.
@@ -362,7 +362,7 @@ trait DslRoute extends Conv {
  *
  * @author Martin Krasser
  */
-trait DslAccess extends Conv {
+trait DslAccess { this: Conv =>
 
   /**
    * Provides convenient access to (asynchronous) message validation responses
