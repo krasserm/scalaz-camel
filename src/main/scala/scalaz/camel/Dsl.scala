@@ -28,7 +28,7 @@ import concurrent.Promise
 import concurrent.Strategy
 
 /**
- * Enterprise integration patterns (EIPs) that can be composed via Kleisli composition (>=>).
+ * Message processors representing enterprise integration patterns (EIPs).
  *
  * @author Martin Krasser
  */
@@ -47,36 +47,34 @@ trait DslEip { this: Conv =>
   protected def multicastStrategy: Strategy
 
   /**
-   * Converts messages to one-way messages.
+   * Creates a message processor that changes the message's exchange pattern to one-way.
    */
-  def oneway = responderKleisli(messageProcessor { m: Message => m.setOneway(true) } )
+  def oneway = messageProcessor { m: Message => m.setOneway(true) }
 
   /**
-   * Converts messages to two-way messages.
+   * Creates a message processor that changes the message's exchange pattern to two-way.
    */
-  def twoway = responderKleisli(messageProcessor { m: Message => m.setOneway(false) } )
+  def twoway = messageProcessor { m: Message => m.setOneway(false) }
 
   /**
-   * Does routing based on pattern matching of messages. Implements the content-based
-   * router EIP.
+   * Creates a message processor that routes messages based on pattern matching. Implements
+   * the content-based router EIP.
    */
-  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageValidationResponderKleisli = responderKleisli {
+  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       f.lift(m) match {
         case Some(r) => messageProcessor(r)(m, k)
         case None    => k(m.success)
       }
     }
-  }
-
 
   /**
-   * Distributes messages to given destinations. Applies the concurrency strategy
-   * returned by <code>multicastStrategy</code> to distribute messages. Distributed
-   * messages are not combined, instead n responses are sent where n is the number
-   * of destinations. Implements the static recipient-list EIP.
+   * Creates a message processor that distributes messages to given destinations. The created
+   * processor applies the concurrency strategy returned by <code>multicastStrategy</code>
+   * to distribute messages. Distributed messages are not combined, instead n responses
+   * are sent where n is the number of destinations. Implements the static recipient-list EIP.
    */
-  def multicast(destinations: MessageValidationResponderKleisli*) = responderKleisli {
+  def multicast(destinations: MessageValidationResponderKleisli*): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       0 until destinations.size foreach { i =>
         multicastStrategy.apply {
@@ -84,13 +82,12 @@ trait DslEip { this: Conv =>
         }
       }
     }
-  }
 
   /**
-   * Generates a sequence of messages using <code>f</code> and sends n responses taken
-   * from the generated message sequence. Implements the splitter EIP.
+   * Creates a message processor that generates a sequence of messages using <code>f</code> and
+   * sends n responses taken from the generated message sequence. Implements the splitter EIP.
    */
-  def split(f: Message => Seq[Message]) = responderKleisli {
+  def split(f: Message => Seq[Message]): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       try {
         f(m) foreach { r => k(r.success) }
@@ -98,15 +95,14 @@ trait DslEip { this: Conv =>
         case e: Exception => k(m.setException(e).fail)
       }
     }
-  }
 
   /**
-   * Filters messages if <code>f</code> returns None and sends a response if
-   * <code>f</code> returns Some message. Allows providers of <code>f</code> to
+   * Creates a message processor that filters messages if <code>f</code> returns None and sends
+   * a response if <code>f</code> returns Some message. Allows providers of <code>f</code> to
    * aggregate messages and continue processing with a combined message, for example.
    * Implements the aggregator EIP.
    */
-  def aggregate(f: Message => Option[Message]) = responderKleisli {
+  def aggregate(f: Message => Option[Message]): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       try {
         f(m) match {
@@ -117,12 +113,11 @@ trait DslEip { this: Conv =>
         case e: Exception => k(m.setException(e).fail)
       }
     }
-  }
 
   /**
-   * A message filter that evaluates predicate <code>p</code>. If <code>p</code> evaluates
-   * to <code>true</code> a response is sent, otherwise the message is dropped. Implements
-   * the filter EIP.
+   * Creates a message processor that filters messages by evaluating predicate <code>p</code>. If
+   * <code>p</code> evaluates to <code>true</code> a response is sent, otherwise the message is
+   * filtered. Implements the filter EIP.
    */
   def filter(p: Message => Boolean) = aggregate { m: Message =>
     if (p(m)) Some(m) else None
@@ -143,10 +138,10 @@ trait DslEip { this: Conv =>
   class ScatterDefinition(destinations: MessageValidationResponderKleisli*) {
 
     /**
-     * Scatters messages to <code>destinations</code> and gathers and combines them using
-     * <code>combine</code>. Messages are scattered to <code>destinations</code> using the
-     * concurrency strategy returned by <code>multicastStrategy</code>. Implements the
-     * scatter-gather EIP.
+     * Creates a message processor that scatters messages to <code>destinations</code> and
+     * gathers and combines them using <code>combine</code>. Messages are scattered to
+     * <code>destinations</code> using the concurrency strategy returned by
+     * <code>multicastStrategy</code>. Implements the scatter-gather EIP.
      *
      * @see scatter
      */
@@ -157,7 +152,8 @@ trait DslEip { this: Conv =>
   }
 
   /** 
-   * Marks messages as failed by setting exception <code>e</code> on <code>MessageExchange</code>.
+   * Creates a message processor that marks messages as failed by setting exception
+   * <code>e</code> on <code>MessageExchange</code>.
    */
   def markFailed(e: Exception): MessageProcessor = messageProcessor(m => m.setException(e))
 
@@ -167,21 +163,21 @@ trait DslEip { this: Conv =>
   // ------------------------------------------
 
   /**
-   * Creates a CPS processor that distributes messages to destinations (using multicast) and gathers
+   * Creates a message processor that distributes messages to destinations (using multicast) and gathers
    * and combines the responses using an aggregator with <code>gatherFunction</code>.
    */
   private def multicastProcessor(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
     (m: Message, k: MessageValidation => Unit) => {
       val sgm = multicast(destinations: _*)
       val sga = aggregate(gatherFunction(combine, destinations.size))
-      // ... let's eat our own dog food ...
-      sgm >=> sga apply m.success respond k
+      responderKleisli(sgm) >=> responderKleisli(sga) apply m.success respond k
     }
   }
 
   /**
-   * Creates a function that gathers and combines multicast responses. This method has a side-effect
-   * because it collects messages in a data structure that is created for each created gather function.
+   * Creates an aggregation function that gathers and combines multicast responses. The function has
+   * a side-effect because it collects messages in a data structure that is created for each created
+   * gather function.
    */
   private def gatherFunction(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
     val ct = new AtomicInteger(count)
@@ -277,8 +273,8 @@ trait DslRoute { this: Conv =>
    * could follow a <i>receive-acknowledge and background processing</i> strategy as shown in CamelJmsTest,
    * for example (TODO: link to Wiki).
    * <p>
-   * Not returning responses, when messages were filtered out or swallowed by aggregators, was a conscious
-   * design decision for reasons of consistency between CPS and direct-style usage of routes.
+   * Not returning responses, when messages were filtered out or swallowed by aggregators, was implemented
+   * for reasons of consistency between CPS and direct-style usage of routes.
    */
   private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor with ErrorHandlerDefinition {
     import RouteProcessor._
@@ -357,7 +353,7 @@ trait DslRoute { this: Conv =>
 }
 
 /**
- * DSL for programmatic access to responses generated by Kleisli routes (i.e. when no endpoint
+ * DSL for convenient access to responses generated by Kleisli routes (i.e. when no endpoint
  * consumer is created via <code>from(...)</code>).
  *
  * @author Martin Krasser
@@ -365,9 +361,8 @@ trait DslRoute { this: Conv =>
 trait DslAccess { this: Conv =>
 
   /**
-   * Provides convenient access to (asynchronous) message validation responses
-   * generated by responder r. Hides continuation-passing style (CPS) usage of
-   * responder r.
+   * Provides convenient access to message validation responses generated by responder r.
+   * Hides continuation-passing style (CPS) usage of responder r.
    *
    * @see Camel.responderToResponseAccess
    */
@@ -390,10 +385,9 @@ trait DslAccess { this: Conv =>
   }
 
   /**
-   * Provides convenient access to (asynchronous) message validation responses
-   * generated by an application of responder Kleisli p (e.g. a Kleisli route)
-   * to a message m. Hides continuation-passing style (CPS) usage of responder
-   * Kleisli p.
+   * Provides convenient access to message validation responses generated by an
+   * application of responder Kleisli p (e.g. a Kleisli route) to a message m.
+   * Hides continuation-passing style (CPS) usage of responder Kleisli p.
    *
    * @see Camel.responderKleisliToResponseAccessKleisli
    */
