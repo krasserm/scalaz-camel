@@ -20,7 +20,7 @@ import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
 import scalaz._
 
 /**
- * Provides converters for constructing Kleisli routes from
+ * Provides converters for constructing message processing routes from
  *
  * <ul>
  * <li>asynchronous message processing functions (Scala, see <code>MessageProcessor</code>)</li>
@@ -53,9 +53,10 @@ trait Conv {
   type MessageProcessor = (Message, MessageValidation => Unit) => Unit
 
   /**
-   * Kleisli type of monadic <code>MessageValidation => MessageValidationResponder</code> functions.
+   * Type of a message processing route or a single route component. These can be composed
+   * via Kleisli composition.
    */
-  type MessageValidationResponderKleisli = Kleisli[Responder, MessageValidation, MessageValidation]
+  type MessageRoute = Kleisli[Responder, MessageValidation, MessageValidation]
 
   /**
    * Set the message exchange of m2 on m1 unless an exchange update should be skipped.
@@ -89,34 +90,34 @@ trait Conv {
   }
 
   /**
-   * Creates a responder Kleisli from a CPS message processor
+   * Creates a message processing route component from a CPS message processor
    */
-  def responderKleisli(p: MessageProcessor): MessageValidationResponderKleisli =
+  def messageRoute(p: MessageProcessor): MessageRoute =
     kleisli((v: MessageValidation) => new MessageValidationResponder(v, p).map(r => r))
 
   /**
-   * Creates a CPS message processor from a Responder Kleisli
+   * Creates a CPS message processor from a message processing route
    */
-  def messageProcessor(p: MessageValidationResponderKleisli): MessageProcessor =
+  def messageProcessor(p: MessageRoute): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => p apply m.success respond k
 
   /**
-   * Creates a CPS message processor from a direct-style message processor. The CPS
-   * processor executes the direct-style message processor synchronously.
+   * Creates a CPS message processor from a direct-style message processor. The created
+   * CPS processor executes the direct-style message processor synchronously.
    */
   def messageProcessor(p: Message => Message): MessageProcessor =
     messageProcessor(p, Strategy.Sequential)
 
   /**
-   * Creates an CPS message processor from a direct-style message processor. The CPS
-   * processor executes the direct-style processor using the concurrency strategy
+   * Creates an CPS message processor from a direct-style message processor. The created
+   * CPS processor executes the direct-style processor using the concurrency strategy
    * <code>s</code>.
    */
   def messageProcessor(p: Message => Message, s: Strategy): MessageProcessor = (m: Message, k: MessageValidation => Unit) =>
     s.apply { try { k(p(m).success) } catch { case e: Exception => k(m.setException(e).fail) } }
 
   /**
-   * Creates a CPS message processor from a Camel message producer obtained from endpoint
+   * Creates a CPS message processor from a Camel message producer obtained from an endpoint
    * defined by URI. This method has a side-effect because it registers the created producer
    * at the Camel context for lifecycle management.
    */

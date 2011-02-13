@@ -97,7 +97,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "application of Kleisli routes using promises" in {
+    "application of routes using promises" in {
       // With the 'Sequential' strategy, routing will be started in the current
       // thread but processing may continue in another thread depending on the
       // concurrency strategy used for dispatcher and processors.
@@ -111,7 +111,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "application of Kleisli routes using response queues" in {
+    "application of routes using response queues" in {
       val queue = appendToBody("-1") >=> appendToBody("-2") responseQueueFor Message("a")
 
       queue.take match {
@@ -120,7 +120,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "application of Kleisli routes using continuation-passing style (CPS)" in {
+    "application of routes using continuation-passing style (CPS)" in {
       val queue = new java.util.concurrent.LinkedBlockingQueue[MessageValidation](10)
       appendToBody("-1") >=> appendToBody("-2") apply Message("a").success respond { mv => queue.put(mv) }
       queue.take match {
@@ -186,8 +186,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       }
     }
 
-    "usage of Kleisli routes inside message processors" in {
-      // CPS message processor doing CPS application of Kleisli route
+    "usage of routes inside message processors" in {
+      // CPS message processor doing CPS application of route
       val composite1: MessageProcessor = (m: Message, k: MessageValidation => Unit) =>
         appendToBody("-n1") >=> appendToBody("-n2") apply m.success respond k
 
@@ -363,12 +363,6 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
     "proper correlation of (concurrent) request and response messages" in {
       import CamelTestProcessors.{processorConcurrencyStrategy => s}
-
-      // Note that there is no explicit correlation of request and response messages using correlation
-      // identifiers, for example. Every application of a Kleisli route to a message maintains that
-      // message (and derived responses) in context of a responder monad (the a computational context
-      // for a single message (flow) on the message-processing route). This ensures proper isolation of
-      // individual message exchanges.
 
       def conditionalDelay(delay: Long, body: String): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
         if (m.body == body)

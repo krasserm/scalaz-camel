@@ -32,7 +32,7 @@ package scalaz.camel
  *
  * @author Martin Krasser
  */
-object Camel extends DslEip with DslEndpoint with DslAttempt with DslAccess with Conv {
+object Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with Conv {
   import org.apache.camel.Processor
   import scalaz.concurrent.Strategy
 
@@ -51,18 +51,18 @@ object Camel extends DslEip with DslEndpoint with DslAttempt with DslAccess with
   protected def dispatchStrategy = dispatchConcurrencyStrategy
   protected def multicastStrategy = multicastConcurrencyStrategy
 
-  implicit def messageProcessorToResponderKleisli(p: MessageProcessor): MessageValidationResponderKleisli =
-    responderKleisli(p)
+  implicit def messageProcessorToMessageRoute(p: MessageProcessor): MessageRoute =
+    messageRoute(p)
 
-  implicit def messageFunctionToResponderKleisli(p: Message => Message): MessageValidationResponderKleisli =
-    responderKleisli(messageProcessor(p))
+  implicit def messageProcessorToMessageRoute(p: Message => Message): MessageRoute =
+    messageRoute(messageProcessor(p))
 
-  implicit def camelProcessorToResponderKleisli(p: Processor)(implicit cm: ContextMgnt): MessageValidationResponderKleisli =
-    responderKleisli(messageProcessor(p, cm))
+  implicit def camelProcessorToMessageRoute(p: Processor)(implicit cm: ContextMgnt): MessageRoute =
+    messageRoute(messageProcessor(p, cm))
 
-  implicit def responderToResponseAccess(r: Responder[MessageValidation]) =
-    new ValidationResponseAccess(r)
+  implicit def responderToResponderApplication(r: Responder[MessageValidation]) =
+    new ResponderApplication(r)
 
-  implicit def responderKleisliToResponseAccessKleisli(p: MessageValidationResponderKleisli) =
-    new ValidationResponseAccessKleisli(p)
+  implicit def routeToRouteApplication(p: MessageRoute) =
+    new RouteApplication(p)
 }

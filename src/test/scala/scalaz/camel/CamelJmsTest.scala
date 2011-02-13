@@ -78,7 +78,7 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
       mock.assertIsSatisfied
     }
 
-    "fast failure of Kleisli routes" in {
+    "fast failure of routes" in {
       from("jms:queue:test-failure") {
         appendToBody("-1") >=> choose {
           case Message("a-1", _) => failWithErrorMessage("failure")

@@ -60,7 +60,7 @@ trait DslEip { this: Conv =>
    * Creates a message processor that routes messages based on pattern matching. Implements
    * the content-based router EIP.
    */
-  def choose(f: PartialFunction[Message, MessageValidationResponderKleisli]): MessageProcessor =
+  def choose(f: PartialFunction[Message, MessageRoute]): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       f.lift(m) match {
         case Some(r) => messageProcessor(r)(m, k)
@@ -74,7 +74,7 @@ trait DslEip { this: Conv =>
    * to distribute messages. Distributed messages are not combined, instead n responses
    * are sent where n is the number of destinations. Implements the static recipient-list EIP.
    */
-  def multicast(destinations: MessageValidationResponderKleisli*): MessageProcessor =
+  def multicast(destinations: MessageRoute*): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       0 until destinations.size foreach { i =>
         multicastStrategy.apply {
@@ -128,14 +128,14 @@ trait DslEip { this: Conv =>
    *
    * @see ScatterDefinition
    */
-  def scatter(destinations: MessageValidationResponderKleisli*) = new ScatterDefinition(destinations: _*)
+  def scatter(destinations: MessageRoute*) = new ScatterDefinition(destinations: _*)
 
   /**
    * Builder for a scatter-gather processor.
    *
    * @see scatter
    */
-  class ScatterDefinition(destinations: MessageValidationResponderKleisli*) {
+  class ScatterDefinition(destinations: MessageRoute*) {
 
     /**
      * Creates a message processor that scatters messages to <code>destinations</code> and
@@ -145,9 +145,9 @@ trait DslEip { this: Conv =>
      *
      * @see scatter
      */
-    def gather(combine: (Message, Message) => Message): MessageValidationResponderKleisli = {
+    def gather(combine: (Message, Message) => Message): MessageRoute = {
       val mcp = multicastProcessor(destinations.toList, combine)
-      responderKleisli((m: Message, k: MessageValidation => Unit) => mcp(m, k))
+      messageRoute((m: Message, k: MessageValidation => Unit) => mcp(m, k))
     }
   }
 
@@ -166,11 +166,11 @@ trait DslEip { this: Conv =>
    * Creates a message processor that distributes messages to destinations (using multicast) and gathers
    * and combines the responses using an aggregator with <code>gatherFunction</code>.
    */
-  private def multicastProcessor(destinations: List[MessageValidationResponderKleisli], combine: (Message, Message) => Message): MessageProcessor = {
+  private def multicastProcessor(destinations: List[MessageRoute], combine: (Message, Message) => Message): MessageProcessor = {
     (m: Message, k: MessageValidation => Unit) => {
       val sgm = multicast(destinations: _*)
       val sga = aggregate(gatherFunction(combine, destinations.size))
-      responderKleisli(sgm) >=> responderKleisli(sga) apply m.success respond k
+      messageRoute(sgm) >=> messageRoute(sga) apply m.success respond k
     }
   }
 
@@ -198,8 +198,8 @@ trait DslEip { this: Conv =>
 
 trait DslAttempt { this: Conv =>
 
-  type AttemptHandler1 = PartialFunction[Exception, MessageValidationResponderKleisli]
-  type AttemptHandlerN = PartialFunction[(Exception, RetryState), MessageValidationResponderKleisli]
+  type AttemptHandler1 = PartialFunction[Exception, MessageRoute]
+  type AttemptHandlerN = PartialFunction[(Exception, RetryState), MessageRoute]
 
   /**
    * Captures the state of (repeated) message routing attempts. A retry state is defined by
@@ -210,7 +210,7 @@ trait DslAttempt { this: Conv =>
    * <li>the original message <code>orig</code> used as input for the attempted route</li>
    * </ul>
    */
-  case class RetryState(r: MessageValidationResponderKleisli, h: AttemptHandlerN, count: Int, orig: Message) {
+  case class RetryState(r: MessageRoute, h: AttemptHandlerN, count: Int, orig: Message) {
     def next = RetryState(r, h, count - 1, orig)
   }
 
@@ -224,7 +224,7 @@ trait DslAttempt { this: Conv =>
    * Creates a builder for an attempt-fallback processor. The processor makes a single attempt
    * to apply route <code>r</code> to an input message.
    */
-  def attempt(r: MessageValidationResponderKleisli) = new AttemptDefinition0(r)
+  def attempt(r: MessageRoute) = new AttemptDefinition0(r)
 
   /**
    * Creates a builder for an attempt(n)-fallback processor. The processor can be used to make n
@@ -233,7 +233,7 @@ trait DslAttempt { this: Conv =>
    * @see orig
    * @see retry
    */
-  def attempt(count: Int)(r: MessageValidationResponderKleisli) = new AttemptDefinitionN(r, count - 1)
+  def attempt(count: Int)(r: MessageRoute) = new AttemptDefinitionN(r, count - 1)
 
   /**
    * Creates a message processor that makes an additional attempt to apply <code>s.r</code>
@@ -260,7 +260,7 @@ trait DslAttempt { this: Conv =>
   /**
    * Builder for an attempt-retry processor.
    */
-  class AttemptDefinition0(r: MessageValidationResponderKleisli) {
+  class AttemptDefinition0(r: MessageRoute) {
     /**
      * Creates an attempt-retry processor using retry handlers defined by <code>h</code>.
      */
@@ -283,7 +283,7 @@ trait DslAttempt { this: Conv =>
   /**
    * Builder for an attempt(n)-retry processor.
    */
-  class AttemptDefinitionN(r: MessageValidationResponderKleisli, count: Int) {
+  class AttemptDefinitionN(r: MessageRoute, count: Int) {
     /**
      * Creates an attempt(n)-retry processor using retry handlers defined by <code>h</code>.
      */
@@ -306,7 +306,7 @@ trait DslEndpoint { this: Conv =>
    * <code>r</code>. This method has a side-effect because it registers the created consumer at the
    * Camel context for lifecycle management.
    */
-  def from(uri: String)(r: MessageValidationResponderKleisli)(implicit em: EndpointMgnt, cm: ContextMgnt): Unit =
+  def from(uri: String)(r: MessageRoute)(implicit em: EndpointMgnt, cm: ContextMgnt): Unit =
     em.createConsumer(uri, new RouteProcessor(r))
 
   /**
@@ -316,7 +316,7 @@ trait DslEndpoint { this: Conv =>
    */
   def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt): MessageProcessor = messageProcessor(uri, em, cm)
 
-  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor {
+  private class RouteProcessor(val p: MessageRoute) extends AsyncProcessor {
     import RouteProcessor._
 
     /**
@@ -374,30 +374,31 @@ trait DslEndpoint { this: Conv =>
 }
 
 /**
- * DSL for convenient access to responses generated by Kleisli routes (i.e. when no endpoint
- * consumer is created via <code>from(...)</code>).
+ * DSL support classes for applying message validation responders and message processing routes.
+ *
+ * @see Camel.responderToResponderApplication
+ * @see Camel.routeToRouteApplication
  *
  * @author Martin Krasser
  */
-trait DslAccess { this: Conv =>
+trait DslApply { this: Conv =>
 
   /**
-   * Provides convenient access to message validation responses generated by responder r.
-   * Hides continuation-passing style (CPS) usage of responder r.
+   * Applies a message validation responder <code>r</code>.
    *
-   * @see Camel.responderToResponseAccess
+   * @see Camel.responderToResponderApplication
    */
-  class ValidationResponseAccess(r: Responder[MessageValidation]) {
-    /** Obtain response from responder r (blocking) */
+  class ResponderApplication(r: Responder[MessageValidation]) {
+    /** Apply responder r and wait for response */
     def response: MessageValidation = responseQueue.take
 
-    /** Obtain response from responder r (blocking with timeout) */
+    /** Apply responder r and wait for response with timeout */
     def response(timeout: Long, unit:  TimeUnit): MessageValidation = responseQueue.poll(timeout, unit)
 
-    /** Obtain response promise from responder r */
+    /** Apply responder r and get response promise */
     def responsePromise(implicit s: Strategy): Promise[MessageValidation] = promise(responseQueue.take)
 
-    /** Obtain response queue from responder r */
+    /** Apply responder r and get response queue */
     def responseQueue: BlockingQueue[MessageValidation] = {
       val queue = new java.util.concurrent.LinkedBlockingQueue[MessageValidation](10)
       r respond { mv => queue.put(mv) }
@@ -406,27 +407,25 @@ trait DslAccess { this: Conv =>
   }
 
   /**
-   * Provides convenient access to message validation responses generated by an
-   * application of responder Kleisli p (e.g. a Kleisli route) to a message m.
-   * Hides continuation-passing style (CPS) usage of responder Kleisli p.
+   * Applies a message processing route <code>r</code>.
    *
-   * @see Camel.responderKleisliToResponseAccessKleisli
+   * @see Camel.routeToRouteApplication
    */
-  class ValidationResponseAccessKleisli(p: MessageValidationResponderKleisli) {
-    /** Obtain response from responder Kleisli p for message m (blocking) */
+  class RouteApplication(r: MessageRoute) {
+    /** Apply route r to message m and wait for response */
     def responseFor(m: Message) =
-      new ValidationResponseAccess(p apply m.success).response
+      new ResponderApplication(r apply m.success).response
 
-    /** Obtain response from responder Kleisli p for message m (blocking with timeout) */
+    /** Apply route r to message m and wait for response with timeout */
     def responseFor(m: Message, timeout: Long, unit:  TimeUnit) =
-      new ValidationResponseAccess(p apply m.success).response(timeout: Long, unit:  TimeUnit)
+      new ResponderApplication(r apply m.success).response(timeout: Long, unit:  TimeUnit)
 
-    /** Obtain response promise from responder Kleisli p for message m */
+    /** Apply route r to message m and get response promise */
     def responsePromiseFor(m: Message)(implicit s: Strategy) =
-      new ValidationResponseAccess(p apply m.success).responsePromise
+      new ResponderApplication(r apply m.success).responsePromise
 
-    /** Obtain response queue from responder Kleisli p for message m */
+    /** Apply route r to message m and get response queue */
     def responseQueueFor(m: Message) =
-      new ValidationResponseAccess(p apply m.success).responseQueue
+      new ResponderApplication(r apply m.success).responseQueue
   }
 }
