@@ -50,9 +50,6 @@ object CamelTestProcessors {
   /** Fails with Exception and error message em. */
   def failWith(em: String): MessageProcessor = cps(ds_failWith(em))
 
-  /** Fails with exception e */
-  def failWith(e: Exception): MessageProcessor = cps(m => throw e)
-
   /** Converts message body to String */
   def convertBodyToString(implicit mgnt: ContextMgnt) = cps(m => m.bodyTo[String])
 

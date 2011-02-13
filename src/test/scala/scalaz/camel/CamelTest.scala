@@ -27,11 +27,11 @@ import scalaz.concurrent.Strategy
 trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
   import Camel._
-  import CamelTestProcessors._
+  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   override def beforeAll = {
-    from("direct:predef-1") route { appendToBody("-p1") }
-    from("direct:predef-2") route { appendToBody("-p2") }
+    from("direct:predef-1") { appendToBody("-p1") }
+    from("direct:predef-2") { appendToBody("-p2") }
     router.start
   }
 
@@ -78,7 +78,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "failure reporting with CPS processors" in {
-      failWith("1") >=> failWith("2") responseFor Message("a") match {
+      failWithErrorMessage("1") >=> failWithErrorMessage("2") responseFor Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -130,85 +130,12 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "message comsumption from endpoints" in {
-      from("direct:test-1") route { appendToBody("-1") >=> appendToBody("-2") }
+      from("direct:test-1") { appendToBody("-1") >=> appendToBody("-2") }
       template.requestBody("direct:test-1", "test") must equal ("test-1-2")
     }
 
-    "error handling with multiple error handling routes" in {
-      val p: Message => Message = (m: Message) => {
-        m.body match {
-          case "a-0" => throw new TestException1("failure1")
-          case "b-0" => throw new TestException2("failure2")
-          case _   => throw new Exception("failure")
-        }
-      }
-
-      from("direct:test-2") route {
-        appendToBody("-0") >=> p
-      } handle {
-        case e: TestException1 => appendToBody("-1")
-        case e: TestException2 => appendToBody("-2")
-        case e: Exception      => appendToBody("-3")
-      }
-
-      template.requestBody("direct:test-2", "a") must equal ("a-0-1")
-      template.requestBody("direct:test-2", "b") must equal ("b-0-2")
-      template.requestBody("direct:test-2", "c") must equal ("c-0-3")
-    }
-
-    "error handling including reporting of causing exception" in {
-      from("direct:test-3") route {
-        failWith(new TestException1("failed"))
-      } handle {
-        case e: Exception => to("mock:mock") >=> markFailed(e) /* causes producer template to throw exception */
-      }
-
-      mock("mock").expectedBodiesReceived("a")
-
-      try {
-        template.requestBody("direct:test-3", "a")
-        fail("exception expected")
-      } catch {
-        case e: Exception => {
-          val cause = e.getCause
-          cause.isInstanceOf[TestException1] must be (true)
-          cause.getMessage must equal ("failed")
-        }
-      }
-
-      mock("mock").assertIsSatisfied
-    }
-
-    "error handling with failures in error handlers" in {
-      from("direct:test-4a") route {
-        failWith("failed")
-      } handle {
-        case e: Exception => failWith("x")
-      }
-
-      from("direct:test-4b") route {
-        failWith("failed")
-      } handle {
-        case e: Exception => failWith("x")
-      }
-
-      try {
-        template.requestBody("direct:test-4a", "a")
-        fail("exception expected")
-      } catch {
-        case e: Exception => e.getCause.getMessage must equal ("x")
-      }
-
-      try {
-        template.requestBody("direct:test-4b", "a")
-        fail("exception expected")
-      } catch {
-        case e: Exception => e.getCause.getMessage must equal ("x")
-      }
-    }
-
     "content-based routing" in {
-      from("direct:test-10") route {
+      from("direct:test-10") {
         appendToBody("-1") >=> choose {
           case Message("a-1", _) => appendToBody("-2") >=> appendToBody("-3")
           case Message("b-1", _) => appendToBody("-4") >=> appendToBody("-5")
@@ -222,7 +149,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     "scatter-gather" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
-      from("direct:test-11") route {
+      from("direct:test-11") {
         appendToBody("-1") >=> scatter(
           appendToBody("-2") >=> appendToBody("-3"),
           appendToBody("-4") >=> appendToBody("-5"),
@@ -236,10 +163,10 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     "scatter-gather that fails if one of the recipients fail" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
 
-      from("direct:test-12") route {
+      from("direct:test-12") {
         appendToBody("-1") >=> scatter(
-          appendToBody("-2") >=> failWith("x"),
-          appendToBody("-4") >=> failWith("y")
+          appendToBody("-2") >=> failWithErrorMessage("x"),
+          appendToBody("-4") >=> failWithErrorMessage("y")
         ).gather(combine) >=> appendToBody(" done")
       }
 
@@ -271,7 +198,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           case Failure(m) => throw m.exception.get
         }
 
-      from("direct:test-20") route {
+      from("direct:test-20") {
          composite1 >=> composite2
       }
 
@@ -296,7 +223,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "multicast" in {
-      from("direct:test-30") route {
+      from("direct:test-30") {
         appendToBody("-1") >=> multicast(
           appendToBody("-2") >=> to("mock:mock1"),
           appendToBody("-3") >=> to("mock:mock1")
@@ -313,13 +240,15 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "multicast with a failing destination" in {
-      from("direct:test-31") route {
-        appendToBody("-1") >=> multicast(
-          appendToBody("-2"),
-          appendToBody("-3") >=> failWith("-fail")
-        ) >=> appendToBody("-done") >=> to("mock:mock")
-      } handle {
-        case e: Exception => appendToBody(e.getMessage) >=> to("mock:error")
+      from("direct:test-31") {
+        attempt {
+          appendToBody("-1") >=> multicast(
+            appendToBody("-2"),
+            appendToBody("-3") >=> failWithErrorMessage("-fail")
+          ) >=> appendToBody("-done") >=> to("mock:mock")
+        } fallback {
+          case e: Exception => appendToBody(e.getMessage) >=> to("mock:error")
+        }
       }
 
       mock("mock").expectedBodiesReceived("a-1-2-done")
@@ -334,7 +263,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     "splitting of messages" in {
       val splitLogic = (m: Message) => for (i <- 1 to 3) yield { m.appendToBody("-%s" format i) }
 
-      from("direct:test-35") route { split(splitLogic) >=> appendToBody("-done") >=> to("mock:mock") }
+      from("direct:test-35") { split(splitLogic) >=> appendToBody("-done") >=> to("mock:mock") }
 
       mock("mock").expectedBodiesReceivedInAnyOrder("a-1-done", "a-2-done", "a-3-done")
 
@@ -358,7 +287,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         }
       }
 
-      from("direct:test-40") route {
+      from("direct:test-40") {
         aggregate(waitFor(3)) >=> to("mock:mock")
       }
 
@@ -374,7 +303,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "filtering of messages" in {
-      from("direct:test-45") route {
+      from("direct:test-45") {
         filter(_.body == "ok") >=> to("mock:mock")
       }
 
@@ -393,8 +322,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       val r = appendToBody("-1") >=> appendToBody("-2")
 
-      from ("direct:test-50a") route r
-      from ("direct:test-50b") route r
+      from ("direct:test-50a") { r }
+      from ("direct:test-50b") { r }
 
       template.requestBody("direct:test-50a", "a") must equal ("a-1-2")
       template.requestBody("direct:test-50b", "b") must equal ("b-1-2")
@@ -410,7 +339,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       // Function that returns a *new* message on which setException is called as well.
       // Returning a new message *and* calling either setException or setOneway required
       // explicit setting on the exchange from the input message as well.
-      val badguy2 = (m: Message) => new Message("bad").setExchangeFrom(m).setException(new TestException1("x"))
+      val badguy2 = (m: Message) => new Message("bad").setExchangeFrom(m).setException(new Exception("x"))
 
       val route1 = appendToBody("-1") >=> badguy1 >=> appendToBody("-2")
       val route2 = appendToBody("-1") >=> badguy2 >=> appendToBody("-2")
@@ -450,7 +379,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       val r = conditionalDelay(1000, "a") >=> conditionalDelay(1000, "x") >=> appendToBody("-done")
 
-      from("direct:test-55") route r
+      from("direct:test-55") { r }
 
       val a = Strategy.Naive.apply { template.requestBody("direct:test-55", "a") }
       val b = Strategy.Naive.apply { template.requestBody("direct:test-55", "b") }
@@ -464,9 +393,6 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       a() must equal ("a-done")
     }
   }
-  
-  class TestException1(msg: String) extends Exception(msg)
-  class TestException2(msg: String) extends Exception(msg)
 }
 
 class CamelTestSequential extends CamelTest

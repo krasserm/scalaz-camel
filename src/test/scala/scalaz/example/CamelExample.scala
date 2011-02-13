@@ -80,13 +80,15 @@ object CamelExample extends MustMatchers {
     val placeOrderRoute = validateOrder >=> oneway >=> to("jms:queue:valid") >=> { m: Message => m.setBody("order accepted") }
 
     // order placement route consuming from direct:place-order endpoint (incl. error handler)
-    from("direct:place-order") route placeOrderRoute handle {
-      case e: ValidationException => { m: Message => m.setBody("order validation failed")}
-      case e: Exception           => { m: Message => m.setBody("general processing error")} >=> markFailed(e)
+    from("direct:place-order") {
+      attempt { placeOrderRoute } fallback {
+        case e: ValidationException => { m: Message => m.setBody("order validation failed")}
+        case e: Exception           => { m: Message => m.setBody("general processing error")} >=> failWith(e)
+      }
     }
 
     // order processing route
-    from("jms:queue:valid") route {
+    from("jms:queue:valid") {
       split { m: Message => for (item <- m.bodyAs[PurchaseOrder].items) yield m.setBody(item) } >=> choose {
         case Message(PurchaseOrderItem(_, "books", _, _), _) => orderItemToTuple >=> to("mock:books")
         case Message(PurchaseOrderItem(_, "bikes", _, _), _) => to("mock:bikes")

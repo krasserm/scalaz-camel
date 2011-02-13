@@ -152,11 +152,11 @@ trait DslEip { this: Conv =>
   }
 
   /** 
-   * Creates a message processor that marks messages as failed by setting exception
-   * <code>e</code> on <code>MessageExchange</code>.
+   * Creates a message processor that sets exception <code>e</code> on the input message and
+   * generates a failure.
    */
-  def markFailed(e: Exception): MessageProcessor = messageProcessor(m => m.setException(e))
-
+  def failWith(e: Exception): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => k(m.setException(e).fail)
 
   // ------------------------------------------
   //  Internal
@@ -196,91 +196,131 @@ trait DslEip { this: Conv =>
   }
 }
 
+trait DslAttempt { this: Conv =>
+
+  type AttemptHandler1 = PartialFunction[Exception, MessageValidationResponderKleisli]
+  type AttemptHandlerN = PartialFunction[(Exception, RetryState), MessageValidationResponderKleisli]
+
+  /**
+   * Captures the state of (repeated) message routing attempts. A retry state is defined by
+   * <ul>
+   * <li>the attempted route <code>r</code></li>
+   * <li>the fallback routes returned by <code>h</code></li>
+   * <li>the remaining number of retries (can be modified by application code)</li>
+   * <li>the original message <code>orig</code> used as input for the attempted route</li>
+   * </ul>
+   */
+  case class RetryState(r: MessageValidationResponderKleisli, h: AttemptHandlerN, count: Int, orig: Message) {
+    def next = RetryState(r, h, count - 1, orig)
+  }
+
+  /**
+   * Creates a message processor that extracts the original message from retry state <code>s</code>.
+   */
+  def orig(s: RetryState): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => k(s.orig.success)
+
+  /**
+   * Creates a builder for an attempt-fallback processor. The processor makes a single attempt
+   * to apply route <code>r</code> to an input message.
+   */
+  def attempt(r: MessageValidationResponderKleisli) = new AttemptDefinition0(r)
+
+  /**
+   * Creates a builder for an attempt(n)-fallback processor. The processor can be used to make n
+   * attempts to apply route <code>r</code> to an input message.
+   *
+   * @see orig
+   * @see retry
+   */
+  def attempt(count: Int)(r: MessageValidationResponderKleisli) = new AttemptDefinitionN(r, count - 1)
+
+  /**
+   * Creates a message processor that makes an additional attempt to apply <code>s.r</code>
+   * (the initially attempted route) to its input message. The message processor decreases
+   * <code>s.count</code> (the retry count by one). A retry attempt is only made if an exception
+   * is set on the message an <code>s.h</code> (a retry handler) is defined at that exception.
+   */
+  def retry(s: RetryState): MessageProcessor =
+    (m: Message, k: MessageValidation => Unit) => {
+      s.r apply m.success respond { mv => mv match {
+        case Success(_) => k(mv)
+        case Failure(m) => {
+          for {
+            e <- m.exception
+            r <- s.h.lift(e, s.next)
+          } {
+            if (s.count > 0) r apply m.exceptionHandled.success respond k else k(mv)
+          }
+        }
+      }}
+
+    }
+
+  /**
+   * Builder for an attempt-retry processor.
+   */
+  class AttemptDefinition0(r: MessageValidationResponderKleisli) {
+    /**
+     * Creates an attempt-retry processor using retry handlers defined by <code>h</code>.
+     */
+    def fallback(h: AttemptHandler1): MessageProcessor =
+      (m: Message, k: MessageValidation => Unit) => {
+        r apply m.success respond { mv => mv match {
+          case Success(_) => k(mv)
+          case Failure(m) => {
+            for {
+              e <- m.exception
+              r <- h.lift(e)
+            } {
+              r apply m.exceptionHandled.success respond k
+            }
+          }
+        }}
+      }
+  }
+
+  /**
+   * Builder for an attempt(n)-retry processor.
+   */
+  class AttemptDefinitionN(r: MessageValidationResponderKleisli, count: Int) {
+    /**
+     * Creates an attempt(n)-retry processor using retry handlers defined by <code>h</code>.
+     */
+    def fallback(h: AttemptHandlerN): MessageProcessor =
+      (m: Message, k: MessageValidation => Unit) => {
+        retry(new RetryState(r, h, count, m))(m, k)
+      }
+  }
+}
+
 /**
- * DSL for route initiation and endpoint management.
+ * DSL for endpoint management.
  *
  * @author Martin Krasser
  */
-trait DslRoute { this: Conv =>
+trait DslEndpoint { this: Conv =>
 
-  /** 
+  /**
+   * Creates a consumer for an endpoint represented by <code>uri</code> and connects it to the route
+   * <code>r</code>. This method has a side-effect because it registers the created consumer at the
+   * Camel context for lifecycle management.
+   */
+  def from(uri: String)(r: MessageValidationResponderKleisli)(implicit em: EndpointMgnt, cm: ContextMgnt): Unit =
+    em.createConsumer(uri, new RouteProcessor(r))
+
+  /**
    * Creates a CPS processor that acts as a producer to the endpoint represented by <code>uri</code>.
    * This method has a side-effect because it registers the created producer at the Camel context for
    * lifecycle management.
    */
-  def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = messageProcessor(uri, em, cm)
+  def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt): MessageProcessor = messageProcessor(uri, em, cm)
 
-  /**
-   * Creates a context for a connecting a Kleisli route to the consumer of endpoint represented by
-   * <code>uri</code>.
-   *
-   * @see MainRouteDefinition
-   */
-  def from(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt) = new MainRouteDefinition(uri, em, cm)
-
-  /**
-   * Context for a connecting a Kleisli route to the consumer of endpoint represented by <code>uri</code>.
-   *
-   * @see from
-   */
-  class MainRouteDefinition(uri: String, em: EndpointMgnt, cm: ContextMgnt) {
-    /**
-     * Connects a Kleisli route to the consumer of the endpoint represented by <code>uri</code>. This method has
-     * a side-effect because it creates and registers an endpoint consumer at the Camel context for lifecycle
-     * management. Returns a context for adding error handlers.
-     *
-     * @see from
-     * @see ErrorRouteDefinition
-     */
-    def route(r: MessageValidationResponderKleisli): ErrorHandlerDefinition = {
-      val processor = new RouteProcessor(r)
-      val consumer = em.createConsumer(uri, processor)
-      processor
-    }
-  }
-
-  /**
-   * Context for adding error handler.
-   */
-  trait ErrorHandlerDefinition {
-    /**
-     * Type alias for error handling partial function.
-     */
-    type Handler = PartialFunction[Exception, MessageValidationResponderKleisli]
-
-    /**
-     * Optional error handler. By default, there's to error handler.
-     */
-    protected var handler: Option[Handler] = None
-
-    /**
-     * Sets the error handler.
-     */
-    def handle(handler: Handler) {
-      this.handler = Some(handler)
-    }
-  }
-
-  /**
-   * Processor that mediates between endpoint consumers and Kleisli routes. <strong>For Kleisli routes
-   * that may not produce a response (e.g. because of a contained filter or aggregator), an in-only
-   * message exchange should be used</strong>. Sending an in-out exchange will cause the client to wait
-   * forever unless an endpoint-specific timeout mechanism is implemented. When sending an in-only exchange
-   * the Kleisli route is applied to the exchange's in-message and the exchange is completed immediately
-   * (fire-and-forget).
-   * <p>
-   * Design hint: routes that receive in-out exchanges <strong>and</strong> contain filters or aggregators
-   * could follow a <i>receive-acknowledge and background processing</i> strategy as shown in CamelJmsTest,
-   * for example (TODO: link to Wiki).
-   * <p>
-   * Not returning responses, when messages were filtered out or swallowed by aggregators, was implemented
-   * for reasons of consistency between CPS and direct-style usage of routes.
-   */
-  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor with ErrorHandlerDefinition {
+  private class RouteProcessor(val p: MessageValidationResponderKleisli) extends AsyncProcessor {
     import RouteProcessor._
 
     /**
-     * Synchronous message processing.
+     *  Synchronous message processing.
      */
     def process(exchange: Exchange) = {
       val latch = new CountDownLatch(1)
@@ -310,26 +350,7 @@ trait DslRoute { this: Conv =>
       true
     }
 
-    private def route(message: Message, k: MessageValidation => Unit): Unit = {
-      p apply message.success respond { mv =>
-        mv match {
-          case Success(m) => k(mv)
-          case Failure(m) => {
-            handler match {
-              case None    => k(mv)
-              case Some(h) => {
-                for {
-                  e <- m.exception
-                  r <- h.lift(e)
-                } {
-                  r apply m.exceptionHandled.success respond k
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    private def route(message: Message, k: MessageValidation => Unit): Unit = p apply message.success respond k
   }
 
   private object RouteProcessor {

@@ -28,7 +28,7 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
   import org.apache.camel.spring.SpringCamelContext._
 
   import Camel._
-  import CamelTestProcessors._
+  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   Camel.dispatchConcurrencyStrategy = Sequential
   Camel.multicastConcurrencyStrategy = Sequential
@@ -49,11 +49,11 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
   "scalaz.camel.Camel" should support {
 
     "communication with jms endpoints" in {
-      from("jms:queue:test") route {
+      from("jms:queue:test") {
         appendToBody("-1") >=> appendToBody("-2") >=> printMessage >=> to("mock:mock")
       }
 
-      from("direct:test") route {
+      from("direct:test") {
         to("jms:queue:test") >=> printMessage
       }
 
@@ -65,11 +65,11 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
     }
 
     "receive-acknowledge and background processing scenarios" in {
-      from("direct:ack") route {
+      from("direct:ack") {
         oneway >=> to("jms:queue:background") >=> { m: Message => m.appendToBody("-ack") }
       }
 
-      from("jms:queue:background") route {
+      from("jms:queue:background") {
         appendToBody("-1") >=> to("mock:mock")
       }
 
@@ -79,14 +79,14 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
     }
 
     "fast failure of Kleisli routes" in {
-      from("jms:queue:test-failure") route {
+      from("jms:queue:test-failure") {
         appendToBody("-1") >=> choose {
-          case Message("a-1", _) => failWith("failure")
+          case Message("a-1", _) => failWithErrorMessage("failure")
           case Message("b-1", _) => printMessage
         } >=> to("mock:mock")
       }
 
-      from("direct:test-failure") route {
+      from("direct:test-failure") {
         to("jms:queue:test-failure") >=> printMessage
       }
 

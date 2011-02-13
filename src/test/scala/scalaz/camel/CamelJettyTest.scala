@@ -27,7 +27,7 @@ import scalaz.concurrent.Strategy._
 class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll {
   import Scalaz._
   import Camel._
-  import CamelTestProcessors._
+  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   CamelTestProcessors.processorConcurrencyStrategy = Naive
 
@@ -41,13 +41,13 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
 
       // non-blocking server route with asynchronous CPS processors
       // and a Jetty endpoint using Jetty continuations.
-      from("jetty:http://localhost:8766/test") route {
+      from("jetty:http://localhost:8766/test") {
         convertBodyToString >=> repeatBody
       }
 
       // non-blocking server route with asynchronous CPS processors
       // and a Jetty endpoint using an asynchronous HTTP client.
-      from("direct:test-1") route {
+      from("direct:test-1") {
         to("jetty:http://localhost:8766/test") >=> appendToBody("-done")
       }
 
@@ -57,10 +57,12 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
 
     "passing the latest update of messages to error handlers" in {
       // latest update before failure is conversion of body to string
-      from("jetty:http://localhost:8761/test") route {
-        convertBodyToString >=> failWith("failure")
-      } handle {
-        case e: Exception => appendToBody("-handled")
+      from("jetty:http://localhost:8761/test") {
+        attempt {
+          convertBodyToString >=> failWithErrorMessage("failure")
+        } fallback {
+          case e: Exception => appendToBody("-handled")
+        }
       }
 
       template.requestBody("http://localhost:8761/test", "test", classOf[String]) must equal ("test-handled")

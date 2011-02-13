@@ -40,14 +40,14 @@ class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
   override def afterAll = router.stop
   override def beforeAll = {
     // also setup these routes before router start
-    from("direct:predef-1") route { appendToBody("-p1") }
-    from("direct:predef-2") route { appendToBody("-p2") }
+    from("direct:predef-1") { appendToBody("-p1") }
+    from("direct:predef-2") { appendToBody("-p2") }
   }
 
   "scalaz.camel.Camel" when {
     "given an implicit router that has not been started" must {
       "allow setup of routes" in {
-        from("direct:test-1") route {
+        from("direct:test-1") {
           to("direct:predef-1") >=> appendToBody("-1")
         }
       }
@@ -55,7 +55,7 @@ class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
     "given an implicit router that has been started" must {
       "allow setup of routes" in {
         router.start
-        from("direct:test-2") route {
+        from("direct:test-2") {
           to("direct:predef-2") >=> appendToBody("-2")
         }
 
