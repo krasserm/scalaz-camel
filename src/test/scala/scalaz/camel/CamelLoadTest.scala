@@ -62,16 +62,25 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
   }
 }
 
-class CamelLoadTestConcurrent1 extends CamelLoadTest {
-  Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
-  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
-  CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(1)))
-}
-
 class CamelLoadTestConcurrentN extends CamelLoadTest {
-  Camel.dispatchConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
-  CamelTestProcessors.processorConcurrencyStrategy = Executor(register(Executors.newFixedThreadPool(3)))
+  import java.util.concurrent.ThreadPoolExecutor
+  import java.util.concurrent.ArrayBlockingQueue
+  import java.util.concurrent.TimeUnit
+
+  // ----------------------------------------------------------------
+  //  Relevant when testing with 1 million messages or more:
+  //  Executors need to use a bounded queue and a CallerRunsPolicy
+  //  to avoid an overly high memory consumption. A comparable
+  //  setting is recommended for production.
+  // ----------------------------------------------------------------
+
+  val executor1 = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue[Runnable](100), new ThreadPoolExecutor.CallerRunsPolicy)
+  val executor2 = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue[Runnable](100), new ThreadPoolExecutor.CallerRunsPolicy)
+  val executor3 = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue[Runnable](100), new ThreadPoolExecutor.CallerRunsPolicy)
+
+  Camel.dispatchConcurrencyStrategy = Executor(register(executor1))
+  Camel.multicastConcurrencyStrategy = Executor(register(executor2))
+  CamelTestProcessors.processorConcurrencyStrategy = Executor(register(executor3))
 }
 
 class CamelLoadTestSequential extends CamelLoadTest
