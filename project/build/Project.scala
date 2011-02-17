@@ -39,11 +39,17 @@ class Project(info: ProjectInfo) extends ParentProject(info) with IdeaProject {
   }
 
   class ProjectSamples(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {
+    override def testResourcesPath = "src" / "main" / "resources"
+
     // Compile
     lazy val camelJms     = Dependencies.camelJms % "compile"
     lazy val cameHttp     = Dependencies.cameHttp % "compile"
     lazy val camelJetty   = Dependencies.camelJetty % "compile"
     lazy val camelSpring  = Dependencies.camelSpring % "compile"
     lazy val activemqCore = Dependencies.activemqCore % "compile"
+
+    // Test
+    lazy val scalatest    = Dependencies.scalatest % "test"
+    lazy val junit        = Dependencies.junit % "test"
   }
 }
