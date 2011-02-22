@@ -18,6 +18,30 @@ package scalaz.camel.core
 import org.apache.camel.{AsyncCallback, AsyncProcessor, Exchange, Processor}
 
 import scalaz._
+import Scalaz._
+import scalaz.concurrent._
+
+object Conv {
+  case class PromiseEither[A, B](value: Promise[Either[A, B]]) extends NewType[Promise[Either[A, B]]]
+
+  implicit def PromiseEitherMonad[L](implicit s: Strategy) =
+    new Monad[({type l[b] = PromiseEither[L, b]})#l] {
+      def pure[A](a: => A) = PromiseEither(promise(a.right))
+      def bind[A, B](a: PromiseEither[L, A], f: A => PromiseEither[L, B]): PromiseEither[L, B] = {
+        val pb = a.value.flatMap[Either[L, B]] {
+          case Left(l) => promise(l.left)
+          case Right(r) => f(r).value
+        }
+        PromiseEither(pb)
+      }
+    }
+
+  implicit def PromiseEitherApply[L]: Apply[({type λ[α]=PromiseEither[L, α]})#λ] =
+    FunctorBindApply[({type λ[α]=PromiseEither[L, α]})#λ]
+
+  type PromiseEitherMessage[α] = ({type λ[α] = PromiseEither[Message, α]})#λ[α]
+}
+
 
 /**
  * Provides converters for constructing message processing routes from
@@ -35,9 +59,71 @@ import scalaz._
  * @author Martin Krasser
  */
 trait Conv {
-  import scalaz.concurrent.Strategy
   import Scalaz._
   import Message._
+  import Conv._
+
+  var strategy = Strategy.Sequential
+
+  // ----------------------------------------------------------------
+
+  type MessageValidation = Either[Message, Message]
+
+  type MessageProcessor = Message => MessageValidation
+
+  type ConcurrentValidation = PromiseEither[Message, Message]
+
+  type ConcurrentProcessor = Message => ConcurrentValidation
+
+  // ----------------------------------------------------------------
+
+  type ConcurrentRoute = Kleisli[PromiseEitherMessage, Message, Message]
+
+  // ----------------------------------------------------------------
+
+  def messageProcessor2concurrentProcessor(p: MessageProcessor): ConcurrentProcessor =
+    (m: Message) => PromiseEither(promise(p(m))(strategy))
+
+  def messageProcessor2concurrentRoute(p: MessageProcessor): ConcurrentRoute =
+    kleisli[PromiseEitherMessage, Message, Message](messageProcessor2concurrentProcessor(p))
+
+  def endpointUri2concurrentProcessor(uri: String, em: EndpointMgnt, cm: ContextMgnt): ConcurrentProcessor =
+    camelProcessor2concurrentProcessor(em.createProducer(uri), cm)
+
+  def camelProcessor2concurrentProcessor(p: Processor, cm: ContextMgnt): ConcurrentProcessor =
+    if (p.isInstanceOf[AsyncProcessor]) camelProcessor2concurrentProcessor(p.asInstanceOf[AsyncProcessor], cm)
+    else camelProcessor2concurrentProcessor(new ProcessorAdapter(p), cm)
+
+  def camelProcessor2concurrentProcessor(p: AsyncProcessor, cm: ContextMgnt): ConcurrentProcessor = (m: Message) => {
+    import org.apache.camel.impl.DefaultExchange
+
+    val me = new DefaultExchange(cm.context)
+
+    me.getIn.fromMessage(m)
+
+    val promise = new Promise[MessageValidation]()(strategy)
+
+    p.process(me, new AsyncCallback {
+      def done(doneSync: Boolean) =
+        if (me.isFailed)
+          promise.fulfill(resultMessage(me).left)
+        else
+          promise.fulfill(resultMessage(me).right)
+
+      private def resultMessage(me: Exchange) = {
+        val rm = if (me.hasOut) me.getOut else me.getIn
+        me.setOut(null)
+        me.setIn(rm)
+        rm.toMessage
+      }
+    })
+
+    PromiseEither(promise)
+  }
+
+  // ----------------------------------------------------------------
+
+  /*
 
   /**
    * Type of a failed or successful response message. <strong>Will be replaced by
@@ -156,6 +242,7 @@ trait Conv {
       }
     })
   }
+  */
 
   /**
    * An <code>AsyncProcessor</code> interface for a (synchronous) Camel <code>Processor</code>.

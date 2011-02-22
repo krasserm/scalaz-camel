@@ -33,6 +33,10 @@ package scalaz.camel.core
  * @author Martin Krasser
  */
 object Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with Conv {
+  implicit def messageProcessorToConcurrentRoute(p: MessageProcessor) =
+    messageProcessor2concurrentRoute(p)
+
+  /*
   import org.apache.camel.Processor
   import scalaz.concurrent.Strategy
 
@@ -65,4 +69,5 @@ object Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with 
 
   implicit def routeToRouteApplication(p: MessageRoute) =
     new RouteApplication(p)
+  */
 }

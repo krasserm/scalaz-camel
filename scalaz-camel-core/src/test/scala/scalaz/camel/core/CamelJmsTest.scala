@@ -26,7 +26,7 @@ import scalaz.concurrent.Strategy._
 class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import org.apache.camel.component.mock.MockEndpoint
   import org.apache.camel.spring.SpringCamelContext._
-
+  /*
   import Camel._
   import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
@@ -96,4 +96,5 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
       mock.assertIsSatisfied
     }
   }
+  */
 }

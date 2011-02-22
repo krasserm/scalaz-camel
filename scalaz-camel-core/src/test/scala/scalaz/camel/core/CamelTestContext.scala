@@ -25,11 +25,11 @@ import org.apache.camel.impl.DefaultCamelContext
  */
 trait CamelTestContext {
   import scalaz.concurrent.Strategy._
-
+  /*
   Camel.dispatchConcurrencyStrategy = Sequential
   Camel.multicastConcurrencyStrategy = Sequential
   CamelTestProcessors.processorConcurrencyStrategy = Sequential
-
+  */
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate
 

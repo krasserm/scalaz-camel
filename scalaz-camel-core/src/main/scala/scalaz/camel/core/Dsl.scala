@@ -33,7 +33,7 @@ import concurrent.Strategy
  * @author Martin Krasser
  */
 trait DslEip { this: Conv =>
-
+  /*
   /**
    * Name of the position message header needed by scatter-gather. Needed to
    * preserve the order of messages that are distributed to destinations.
@@ -194,10 +194,11 @@ trait DslEip { this: Conv =>
       }
     }
   }
+  */
 }
 
 trait DslAttempt { this: Conv =>
-
+  /*
   type AttemptHandler1 = PartialFunction[Exception, MessageRoute]
   type AttemptHandlerN = PartialFunction[(Exception, RetryState), MessageRoute]
 
@@ -292,6 +293,7 @@ trait DslAttempt { this: Conv =>
         retry(new RetryState(r, h, count, m))(m, k)
       }
   }
+  */
 }
 
 /**
@@ -301,6 +303,9 @@ trait DslAttempt { this: Conv =>
  */
 trait DslEndpoint { this: Conv =>
 
+  def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt): ConcurrentProcessor = endpointUri2concurrentProcessor(uri, em, cm)
+
+  /*
   /**
    * Creates a consumer for an endpoint represented by <code>uri</code> and connects it to the route
    * <code>r</code>. This method has a side-effect because it registers the created consumer at the
@@ -371,6 +376,7 @@ trait DslEndpoint { this: Conv =>
       (mv: MessageValidation) => if (!done.getAndSet(true)) k(mv)
     }
   }
+  */
 }
 
 /**
@@ -382,7 +388,7 @@ trait DslEndpoint { this: Conv =>
  * @author Martin Krasser
  */
 trait DslApply { this: Conv =>
-
+  /*
   /**
    * Applies a message validation responder <code>r</code>.
    *
@@ -428,4 +434,5 @@ trait DslApply { this: Conv =>
     def responseQueueFor(m: Message) =
       new ResponderApplication(r apply m.success).responseQueue
   }
+  */
 }

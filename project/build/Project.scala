@@ -9,7 +9,6 @@ class Project(info: ProjectInfo) extends ParentProject(info) with IdeaProject {
   lazy val scalazCamelSamples = project("scalaz-camel-samples", "scalaz-camel-samples", new ProjectSamples(_), scalazCamelCore)
 
   object Dependencies {
-    lazy val scalazCore   = "com.googlecode.scalaz" % "scalaz-core_2.8.0" % ScalazVersion
     lazy val camelCore    = "org.apache.camel" % "camel-core" % CamelVersion
     lazy val camelJms     = "org.apache.camel" % "camel-jms" % CamelVersion
     lazy val cameHttp     = "org.apache.camel" % "camel-http" % CamelVersion
@@ -22,7 +21,6 @@ class Project(info: ProjectInfo) extends ParentProject(info) with IdeaProject {
 
   class ProjectCore(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {
     // Compile
-    lazy val scalazCore   = Dependencies.scalazCore % "compile"
     lazy val camelCore    = Dependencies.camelCore % "compile"
 
     // Test

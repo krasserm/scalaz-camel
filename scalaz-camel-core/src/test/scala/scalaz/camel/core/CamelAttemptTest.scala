@@ -27,6 +27,7 @@ import scalaz.concurrent.Strategy
 trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
   import Camel._
+  /*
   import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   override def beforeAll = router.start
@@ -181,11 +182,11 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
       mock("mock").assertIsSatisfied
     }
   }
-
+  */
   class TestException1(msg: String) extends Exception(msg)
   class TestException2(msg: String) extends Exception(msg)
 }
-
+/*
 class CamelAttemptTestSequential extends CamelAttemptTest
 class CamelAttemptTestConcurrent extends CamelAttemptTest with ExecutorMgnt {
   import java.util.concurrent.Executors
@@ -199,3 +200,4 @@ class CamelAttemptTestConcurrent extends CamelAttemptTest with ExecutorMgnt {
     super.afterAll
   }
 }
+*/

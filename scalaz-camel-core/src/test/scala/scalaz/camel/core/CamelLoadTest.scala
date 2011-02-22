@@ -36,7 +36,7 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
     shutdown
     router.stop
   }
-
+  /*
   "scalaz.camel.Camel" should {
     "be able to pass a simple load test" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
@@ -60,9 +60,11 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
       println
     }
   }
+  */
 }
-
-class CamelLoadTestConcurrentN extends CamelLoadTest {
+/*
+class CamelLoadTestSequential extends CamelLoadTest
+class CamelLoadTestConcurrent extends CamelLoadTest {
   import java.util.concurrent.ThreadPoolExecutor
   import java.util.concurrent.ArrayBlockingQueue
   import java.util.concurrent.TimeUnit
@@ -82,5 +84,4 @@ class CamelLoadTestConcurrentN extends CamelLoadTest {
   Camel.multicastConcurrencyStrategy = Executor(register(executor2))
   CamelTestProcessors.processorConcurrencyStrategy = Executor(register(executor3))
 }
-
-class CamelLoadTestSequential extends CamelLoadTest
+*/

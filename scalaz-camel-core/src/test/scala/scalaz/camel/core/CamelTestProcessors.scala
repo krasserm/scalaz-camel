@@ -25,7 +25,12 @@ import scalaz._
 object CamelTestProcessors {
   import scalaz.concurrent.Strategy
   import Scalaz._
+
   import Camel.MessageProcessor
+
+  def appendToBody(o: Any)(implicit mgnt: ContextMgnt): MessageProcessor = (m: Message) => m.appendToBody(o).right
+
+  /*
 
   /** Concurrency strategy for each created processor (defaults to Strategy.Sequential) */
   var processorConcurrencyStrategy: Strategy = Strategy.Sequential
@@ -61,6 +66,7 @@ object CamelTestProcessors {
 
   /**  Repeats message body (using String concatenation) */
   def repeatBody = new RepeatBodyProcessor(processorConcurrencyStrategy)
+  */
 
   /** Camel processor that repeats the body of the input message */
   class RepeatBodyProcessor(s: Strategy) extends AsyncProcessor {
@@ -80,6 +86,8 @@ object CamelTestProcessors {
     def sp = this.asInstanceOf[Processor]
   }
 
+  /*
   /** Creates an CPS processor direct-style processor */
   def cps(p: Message => Message): MessageProcessor = Camel.messageProcessor(p, processorConcurrencyStrategy)
+  */
 }

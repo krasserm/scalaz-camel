@@ -27,11 +27,19 @@ import scalaz.concurrent.Strategy
 trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
   import Camel._
-  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
+
+  import CamelTestProcessors._
 
   override def beforeAll = {
-    from("direct:predef-1") { appendToBody("-p1") }
-    from("direct:predef-2") { appendToBody("-p2") }
+    //from("direct:predef-1") { appendToBody("-p1") }
+    //from("direct:predef-2") { appendToBody("-p2") }
+
+    router.context.addRoutes(new org.apache.camel.builder.RouteBuilder() {
+      def configure = {
+        from("direct:predef").process(new RepeatBodyProcessor(strategy))
+      }
+    })
+
     router.start
   }
 
@@ -41,7 +49,14 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
   def support = afterWord("support")
 
   "scalaz.camel.Camel" should support {
+    "basic routing" in {
+      val promise = appendToBody("-1") >=> to("direct:predef") >=> appendToBody("-2") apply Message("x") get match {
+        case Right(msg) => msg.body must equal ("x-1x-1-2")
+        case _          => fail("unexpected result")
+      }
+    }
 
+    /*
     "Kleisli composition of CPS message processors" in {
       appendToBody("-1") >=> appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
     }
@@ -386,6 +401,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       b() must equal ("b-done")
       a() must equal ("a-done")
     }
+    */
   }
 }
 
@@ -393,9 +409,7 @@ class CamelTestSequential extends CamelTest
 class CamelTestConcurrent extends CamelTest with ExecutorMgnt {
   import java.util.concurrent.Executors
 
-  Camel.dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  CamelTestProcessors.processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  Camel.strategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
 
   override def afterAll = {
     shutdown

@@ -34,7 +34,7 @@ object CoreExample {
   def main(args: Array[String]) = run
 
   def run: Unit = {
-
+    /*
     // -----------------------------------------------------------------
     //  Application setup
     // -----------------------------------------------------------------
@@ -145,6 +145,7 @@ object CoreExample {
 
     router.stop
     executor.shutdownNow
+    */
   }
 }
 
@@ -152,6 +153,7 @@ object CoreExample {
  * @author Martin Krasser
  */
 object CoreExampleAsserts {
+  /*
   import org.apache.camel.component.mock.MockEndpoint
 
   def assertOrderProcessed(validation: => Camel.MessageValidation)(implicit cm: ContextMgnt) {
@@ -172,4 +174,5 @@ object CoreExampleAsserts {
     books.assertIsSatisfied
     bikes.assertIsSatisfied
   }
+  */
 }

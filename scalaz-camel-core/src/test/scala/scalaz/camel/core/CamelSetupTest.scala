@@ -28,7 +28,7 @@ import scalaz.concurrent.Strategy._
 class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
   import Camel._
   import CamelTestProcessors._
-
+  /*
   Camel.dispatchConcurrencyStrategy = Sequential
   Camel.multicastConcurrencyStrategy = Sequential
   CamelTestProcessors.processorConcurrencyStrategy = Naive
@@ -64,4 +64,5 @@ class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
       }
     }
   }
+  */
 }

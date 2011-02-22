@@ -27,6 +27,7 @@ import scalaz.concurrent.Strategy._
 class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll {
   import Scalaz._
   import Camel._
+  /*
   import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   CamelTestProcessors.processorConcurrencyStrategy = Naive
@@ -68,5 +69,5 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
       template.requestBody("http://localhost:8761/test", "test", classOf[String]) must equal ("test-handled")
     }
   }
-
+  */
 }
