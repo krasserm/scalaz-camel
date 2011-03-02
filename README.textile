@@ -2,4 +2,6 @@ This project provides a domain-specific language (DSL) for "Apache Camel":http:/
 
 The scalaz-camel DSL is an alternative to Camel's existing Java DSL and Scala DSL. It strongly focuses on Scala and Scalaz idioms when constructing integration solutions from "enterprise integration patterns":http://www.enterpriseintegrationpatterns.com/ (EIPs) with Apache Camel. The DSL was re-designed from scratch with the goal of a better and more native integration with the Scala programming language.
 
+See also "this interview":http://jaxenter.com/scalaz-camel-fully-leveraging-what-scala-and-scalaz-offers-for-functional-programming-34717.html.
+
 "Learn more ...":https://github.com/krasserm/scalaz-camel/wiki
