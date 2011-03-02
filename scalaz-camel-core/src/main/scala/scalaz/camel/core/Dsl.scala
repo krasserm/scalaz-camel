@@ -175,9 +175,7 @@ trait DslEip { this: Conv =>
   }
 
   /**
-   * Creates an aggregation function that gathers and combines multicast responses. The function has
-   * a side-effect because it collects messages in a data structure that is created for each created
-   * gather function.
+   * Creates an aggregation function that gathers and combines multicast responses.
    */
   private def gatherFunction(combine: (Message, Message) => Message, count: Int): Message => Option[Message] = {
     val ct = new AtomicInteger(count)
@@ -303,16 +301,15 @@ trait DslEndpoint { this: Conv =>
 
   /**
    * Creates a consumer for an endpoint represented by <code>uri</code> and connects it to the route
-   * <code>r</code>. This method has a side-effect because it registers the created consumer at the
-   * Camel context for lifecycle management.
+   * <code>r</code>. This method registers the created consumer at the Camel context for lifecycle
+   * management.
    */
   def from(uri: String)(r: MessageRoute)(implicit em: EndpointMgnt, cm: ContextMgnt): Unit =
     em.createConsumer(uri, new RouteProcessor(r))
 
   /**
    * Creates a CPS processor that acts as a producer to the endpoint represented by <code>uri</code>.
-   * This method has a side-effect because it registers the created producer at the Camel context for
-   * lifecycle management.
+   * This method registers the created producer at the Camel context for lifecycle management.
    */
   def to(uri: String)(implicit em: EndpointMgnt, cm: ContextMgnt): MessageProcessor = messageProcessor(uri, em, cm)
 

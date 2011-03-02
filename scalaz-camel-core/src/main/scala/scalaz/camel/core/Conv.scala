@@ -118,8 +118,8 @@ trait Conv {
 
   /**
    * Creates a CPS message processor from a Camel message producer obtained from an endpoint
-   * defined by URI. This method has a side-effect because it registers the created producer
-   * at the Camel context for lifecycle management.
+   * defined by URI. This method registers the created producer at the Camel context for
+   * lifecycle management.
    */
   def messageProcessor(uri: String, em: EndpointMgnt, cm: ContextMgnt): MessageProcessor =
     messageProcessor(em.createProducer(uri), cm)
