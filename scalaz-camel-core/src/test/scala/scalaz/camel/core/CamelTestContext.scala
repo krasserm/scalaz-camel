@@ -20,16 +20,12 @@ import collection.mutable.Map
 import org.apache.camel.component.mock.MockEndpoint
 import org.apache.camel.impl.DefaultCamelContext
 
+import scalaz.concurrent.Strategy
+
 /**
  * @author Martin Krasser
  */
 trait CamelTestContext {
-  import scalaz.concurrent.Strategy._
-  /*
-  Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
-  CamelTestProcessors.processorConcurrencyStrategy = Sequential
-  */
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate
 
@@ -46,4 +42,6 @@ trait CamelTestContext {
       }
     }
   }
+
+  Camel.strategy = Strategy.Sequential
 }

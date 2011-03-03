@@ -30,44 +30,6 @@ object CamelTestProcessors {
 
   def appendToBody(o: Any)(implicit mgnt: ContextMgnt): MessageProcessor = (m: Message) => m.appendToBody(o).right
 
-  /*
-
-  /** Concurrency strategy for each created processor (defaults to Strategy.Sequential) */
-  var processorConcurrencyStrategy: Strategy = Strategy.Sequential
-
-  //
-  // Direct-style processors: Message => Message (may throw exception)
-  //
-
-  /** Fails with Exception and error message em (direct-style processor). */
-  def ds_failWith(em: String): Message => Message = (m: Message) => throw new Exception(em)
-
-  /** Appends o to message body (direct-style processor) */
-  def ds_appendToBody(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendToBody(o)
-
-  /** Prints message to stdout (direct-style processor) */
-  def ds_printMessage = (m: Message) => { println(m); m }
-
-  //
-  // CPS (continuation-passing style) processors: (Message, MessageValidation => Unit) => Unit
-  //
-
-  /** Fails with Exception and error message em. */
-  def failWith(em: String): MessageProcessor = cps(ds_failWith(em))
-
-  /** Converts message body to String */
-  def convertBodyToString(implicit mgnt: ContextMgnt) = cps(m => m.bodyTo[String])
-
-  /** Appends o to message body */
-  def appendToBody(o: Any)(implicit mgnt: ContextMgnt) = cps(ds_appendToBody(o))
-
-  /** Prints message to stdout */
-  def printMessage = cps(ds_printMessage)
-
-  /**  Repeats message body (using String concatenation) */
-  def repeatBody = new RepeatBodyProcessor(processorConcurrencyStrategy)
-  */
-
   /** Camel processor that repeats the body of the input message */
   class RepeatBodyProcessor(s: Strategy) extends AsyncProcessor {
     def process(exchange: Exchange) = {
@@ -85,9 +47,4 @@ object CamelTestProcessors {
 
     def sp = this.asInstanceOf[Processor]
   }
-
-  /*
-  /** Creates an CPS processor direct-style processor */
-  def cps(p: Message => Message): MessageProcessor = Camel.messageProcessor(p, processorConcurrencyStrategy)
-  */
 }

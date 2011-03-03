@@ -16,58 +16,10 @@
 package scalaz.camel.core
 
 /**
- * Provides the Camel DSL. To use it in your application use the following template.
- *
- * <pre>
- * import scalaz._
- * import scalaz.camel._
- *
- * class Foo {
- *   import Scalaz._
- *   import Camel._
- *
- *   ...
- * }
- * </pre>
+ * Provides the Camel DSL.
  *
  * @author Martin Krasser
  */
 object Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with Conv {
-  implicit def messageProcessorToConcurrentRoute(p: MessageProcessor) =
-    messageProcessor2concurrentRoute(p)
-
-  /*
-  import org.apache.camel.Processor
-  import scalaz.concurrent.Strategy
-
-  /**
-   * Concurrency strategy to use for dispatching messages along the processor chain.
-   * Defaults to <code>Strategy.Sequential</code>.
-   */
-  var dispatchConcurrencyStrategy: Strategy = Strategy.Sequential
-
-  /**
-   * Concurrency strategy to use for distributing messages to destinations with the
-   * multicast and scatter-gather EIPs. Defaults to <code>Strategy.Sequential</code>.
-   */
-  var multicastConcurrencyStrategy: Strategy = Strategy.Sequential
-
-  protected def dispatchStrategy = dispatchConcurrencyStrategy
-  protected def multicastStrategy = multicastConcurrencyStrategy
-
-  implicit def messageProcessorToMessageRoute(p: MessageProcessor): MessageRoute =
-    messageRoute(p)
-
-  implicit def messageProcessorToMessageRoute(p: Message => Message): MessageRoute =
-    messageRoute(messageProcessor(p))
-
-  implicit def camelProcessorToMessageRoute(p: Processor)(implicit cm: ContextMgnt): MessageRoute =
-    messageRoute(messageProcessor(p, cm))
-
-  implicit def responderToResponderApplication(r: Responder[MessageValidation]) =
-    new ResponderApplication(r)
-
-  implicit def routeToRouteApplication(p: MessageRoute) =
-    new RouteApplication(p)
-  */
+  implicit def messageProcessorToConcurrentRoute(p: MessageProcessor) = messageProcessor2concurrentRoute(p)
 }
