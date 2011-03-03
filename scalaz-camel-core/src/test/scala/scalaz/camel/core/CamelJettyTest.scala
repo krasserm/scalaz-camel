@@ -34,7 +34,7 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
 
   def support = afterWord("support")
 
-  "scalaz.camel.Camel" should support {
+  "scalaz.camel.core.Camel" should support {
     "non-blocking routing with asynchronous Jetty endpoints" in {
 
       // non-blocking server route with asynchronous CPS processors

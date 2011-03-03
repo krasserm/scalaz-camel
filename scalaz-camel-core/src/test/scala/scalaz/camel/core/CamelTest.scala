@@ -38,7 +38,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
   def support = afterWord("support")
 
-  "scalaz.camel.Camel" should support {
+  "scalaz.camel.core.Camel" should support {
 
     "Kleisli composition of CPS message processors" in {
       appendToBody("-1") >=> appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))

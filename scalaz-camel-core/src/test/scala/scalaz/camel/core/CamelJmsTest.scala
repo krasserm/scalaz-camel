@@ -43,7 +43,7 @@ class CamelJmsTest extends Camel with CamelTestProcessors with WordSpec with Mus
 
   def support = afterWord("support")
 
-  "scalaz.camel.Camel" should support {
+  "scalaz.camel.core.Camel" should support {
 
     "communication with jms endpoints" in {
       from("jms:queue:test") {

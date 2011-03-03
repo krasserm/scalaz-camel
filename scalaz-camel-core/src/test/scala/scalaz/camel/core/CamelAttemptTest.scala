@@ -33,7 +33,7 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
 
   def support = afterWord("support")
 
-  "scalaz.camel.Camel" should support {
+  "scalaz.camel.core.Camel" should support {
     "single routing attempts with multiple error handling routes" in {
       val p: Message => Message = (m: Message) => {
         m.body match {

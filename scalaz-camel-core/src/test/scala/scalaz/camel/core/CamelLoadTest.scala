@@ -35,7 +35,7 @@ abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with Wor
     router.stop
   }
 
-  "scalaz.camel.Camel" should {
+  "scalaz.camel.core.Camel" should {
     "be able to pass a simple load test" in {
       val combine = (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body)
       val route = appendToBody("-1") >=> scatter(

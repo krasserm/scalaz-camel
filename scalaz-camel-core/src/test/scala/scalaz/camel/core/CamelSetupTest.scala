@@ -42,7 +42,7 @@ class CamelSetupTest extends Camel with CamelTestProcessors with WordSpec with M
     from("direct:predef-2") { appendToBody("-p2") }
   }
 
-  "scalaz.camel.Camel" when {
+  "scalaz.camel.core.Camel" when {
     "given an implicit router that has not been started" must {
       "allow setup of routes" in {
         from("direct:test-1") {
