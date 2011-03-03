@@ -28,8 +28,6 @@ import scalaz.concurrent.Strategy._
  */
 abstract class CamelLoadTest extends CamelTestContext with ExecutorMgnt with WordSpec with MustMatchers with BeforeAndAfterAll {
   import Scalaz._
-  import Camel._
-  import CamelTestProcessors._
 
   override def beforeAll = router.start
   override def afterAll = {
@@ -78,9 +76,9 @@ class CamelLoadTestConcurrentN extends CamelLoadTest {
   val executor2 = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue[Runnable](100), new ThreadPoolExecutor.CallerRunsPolicy)
   val executor3 = new ThreadPoolExecutor(10, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue[Runnable](100), new ThreadPoolExecutor.CallerRunsPolicy)
 
-  Camel.dispatchConcurrencyStrategy = Executor(register(executor1))
-  Camel.multicastConcurrencyStrategy = Executor(register(executor2))
-  CamelTestProcessors.processorConcurrencyStrategy = Executor(register(executor3))
+  dispatchConcurrencyStrategy = Executor(register(executor1))
+  multicastConcurrencyStrategy = Executor(register(executor2))
+  processorConcurrencyStrategy = Executor(register(executor3))
 }
 
 class CamelLoadTestSequential extends CamelLoadTest

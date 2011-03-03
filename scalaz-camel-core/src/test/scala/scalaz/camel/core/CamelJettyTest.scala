@@ -26,10 +26,8 @@ import scalaz.concurrent.Strategy._
  */
 class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll {
   import Scalaz._
-  import Camel._
-  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
-  CamelTestProcessors.processorConcurrencyStrategy = Naive
+  processorConcurrencyStrategy = Naive
 
   override def beforeAll = router.start
   override def afterAll = router.stop
@@ -59,7 +57,7 @@ class CamelJettyTest extends CamelTestContext with WordSpec with MustMatchers wi
       // latest update before failure is conversion of body to string
       from("jetty:http://localhost:8761/test") {
         attempt {
-          convertBodyToString >=> failWithErrorMessage("failure")
+          convertBodyToString >=> failWithMessage("failure")
         } fallback {
           case e: Exception => appendToBody("-handled")
         }

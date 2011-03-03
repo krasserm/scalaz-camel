@@ -23,12 +23,12 @@ import org.apache.camel.impl.DefaultCamelContext
 /**
  * @author Martin Krasser
  */
-trait CamelTestContext {
+trait CamelTestContext extends Camel with CamelTestProcessors {
   import scalaz.concurrent.Strategy._
 
-  Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
-  CamelTestProcessors.processorConcurrencyStrategy = Sequential
+  dispatchConcurrencyStrategy = Sequential
+  multicastConcurrencyStrategy = Sequential
+  processorConcurrencyStrategy = Sequential
 
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate

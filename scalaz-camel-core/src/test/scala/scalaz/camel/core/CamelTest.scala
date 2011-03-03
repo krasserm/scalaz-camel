@@ -26,8 +26,6 @@ import scalaz.concurrent.Strategy
  */
 trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
-  import Camel._
-  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   override def beforeAll = {
     from("direct:predef-1") { appendToBody("-p1") }
@@ -78,7 +76,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "failure reporting with CPS processors" in {
-      failWithErrorMessage("1") >=> failWithErrorMessage("2") responseFor Message("a") match {
+      failWithMessage("1") >=> failWithMessage("2") responseFor Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -88,7 +86,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "failure reporting with direct-style processors (that throw exceptions)" in {
-      ds_failWith("1") >=> ds_failWith("2") responseFor Message("a") match {
+      ds_failWithMessage("1") >=> ds_failWithMessage("2") responseFor Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -165,8 +163,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       from("direct:test-12") {
         appendToBody("-1") >=> scatter(
-          appendToBody("-2") >=> failWithErrorMessage("x"),
-          appendToBody("-4") >=> failWithErrorMessage("y")
+          appendToBody("-2") >=> failWithMessage("x"),
+          appendToBody("-4") >=> failWithMessage("y")
         ).gather(combine) >=> appendToBody(" done")
       }
 
@@ -180,7 +178,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
           // For sequential multicast (or a when using a single-threaded
           // executor for multicast) then exception message 'x' will always
           // be reported first.
-          if (Camel.multicastConcurrencyStrategy == Strategy.Sequential)
+          if (multicastConcurrencyStrategy == Strategy.Sequential)
             e.getCause.getMessage must equal ("x")
         }
       }
@@ -244,7 +242,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         attempt {
           appendToBody("-1") >=> multicast(
             appendToBody("-2"),
-            appendToBody("-3") >=> failWithErrorMessage("-fail")
+            appendToBody("-3") >=> failWithMessage("-fail")
           ) >=> appendToBody("-done") >=> to("mock:mock")
         } fallback {
           case e: Exception => appendToBody(e.getMessage) >=> to("mock:error")
@@ -362,13 +360,11 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "proper correlation of (concurrent) request and response messages" in {
-      import CamelTestProcessors.{processorConcurrencyStrategy => s}
-
       def conditionalDelay(delay: Long, body: String): MessageProcessor = (m: Message, k: MessageValidation => Unit) => {
         if (m.body == body)
-          s.apply { Thread.sleep(delay); k(m.success) }
+          processorConcurrencyStrategy.apply { Thread.sleep(delay); k(m.success) }
         else
-          s.apply { k(m.success) }
+          processorConcurrencyStrategy.apply { k(m.success) }
       }
 
       val r = conditionalDelay(1000, "a") >=> conditionalDelay(1000, "x") >=> appendToBody("-done")
@@ -393,9 +389,9 @@ class CamelTestSequential extends CamelTest
 class CamelTestConcurrent extends CamelTest with ExecutorMgnt {
   import java.util.concurrent.Executors
 
-  Camel.dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  CamelTestProcessors.processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
 
   override def afterAll = {
     shutdown

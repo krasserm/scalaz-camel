@@ -25,13 +25,11 @@ import scalaz.concurrent.Strategy._
 /**
  * @author Martin Krasser
  */
-class CamelSetupTest extends WordSpec with MustMatchers with BeforeAndAfterAll {
-  import Camel._
-  import CamelTestProcessors._
+class CamelSetupTest extends Camel with CamelTestProcessors with WordSpec with MustMatchers with BeforeAndAfterAll {
 
-  Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
-  CamelTestProcessors.processorConcurrencyStrategy = Naive
+  dispatchConcurrencyStrategy = Sequential
+  multicastConcurrencyStrategy = Sequential
+  processorConcurrencyStrategy = Naive
 
   val context = new DefaultCamelContext
   val template = context.createProducerTemplate

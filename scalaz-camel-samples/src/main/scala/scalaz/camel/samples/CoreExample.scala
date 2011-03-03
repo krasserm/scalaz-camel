@@ -27,9 +27,8 @@ case class ValidationException(msg: String) extends Exception(msg)
 /**
  * @author Martin Krasser
  */
-object CoreExample {
+object CoreExample extends Camel {
   import Scalaz._
-  import Camel._
 
   def main(args: Array[String]) = run
 
@@ -43,7 +42,7 @@ object CoreExample {
 
     // use a custom concurrency strategy for routing
     // messages along the message processing chain(s)
-    Camel.dispatchConcurrencyStrategy = Strategy.Executor(executor)
+    dispatchConcurrencyStrategy = Strategy.Executor(executor)
 
     // setup Camel context and producer template
     import org.apache.camel.spring.SpringCamelContext._
@@ -154,7 +153,7 @@ object CoreExample {
 object CoreExampleAsserts {
   import org.apache.camel.component.mock.MockEndpoint
 
-  def assertOrderProcessed(validation: => Camel.MessageValidation)(implicit cm: ContextMgnt) {
+  def assertOrderProcessed(validation: => Validation[Message, Message])(implicit cm: ContextMgnt) {
     val books = cm.context.getEndpoint("mock:books", classOf[MockEndpoint])
     val bikes = cm.context.getEndpoint("mock:bikes", classOf[MockEndpoint])
 

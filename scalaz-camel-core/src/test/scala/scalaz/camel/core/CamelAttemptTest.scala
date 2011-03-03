@@ -26,8 +26,6 @@ import scalaz.concurrent.Strategy
  */
 trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import Scalaz._
-  import Camel._
-  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
 
   override def beforeAll = router.start
   override def afterAll = router.stop
@@ -88,17 +86,17 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
     "single routing attempts with failures in error handlers" in {
       from("direct:test-4a") {
         attempt {
-          failWithErrorMessage("failed")
+          failWithMessage("failed")
         } fallback {
-          case e: Exception => failWithErrorMessage("x")
+          case e: Exception => failWithMessage("x")
         }
       }
 
       from("direct:test-4b") {
         attempt {
-          failWithErrorMessage("failed")
+          failWithMessage("failed")
         } fallback {
-          case e: Exception => failWithErrorMessage("x")
+          case e: Exception => failWithMessage("x")
         }
       }
 
@@ -190,9 +188,9 @@ class CamelAttemptTestSequential extends CamelAttemptTest
 class CamelAttemptTestConcurrent extends CamelAttemptTest with ExecutorMgnt {
   import java.util.concurrent.Executors
 
-  Camel.dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  Camel.multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
-  CamelTestProcessors.processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  dispatchConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  multicastConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
+  processorConcurrencyStrategy = Strategy.Executor(register(Executors.newFixedThreadPool(3)))
 
   override def afterAll = {
     shutdown

@@ -16,23 +16,11 @@
 package scalaz.camel.core
 
 /**
- * Provides the Camel DSL. To use it in your application use the following template.
- *
- * <pre>
- * import scalaz._
- * import scalaz.camel._
- *
- * class Foo {
- *   import Scalaz._
- *   import Camel._
- *
- *   ...
- * }
- * </pre>
+ * Provides the Camel DSL.
  *
  * @author Martin Krasser
  */
-object Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with Conv {
+trait Camel extends DslEip with DslAttempt with DslEndpoint with DslApply with Conv {
   import org.apache.camel.Processor
   import scalaz.concurrent.Strategy
 

@@ -22,10 +22,9 @@ import scalaz._
 /**
  * @author Martin Krasser
  */
-object CamelTestProcessors {
+trait CamelTestProcessors { this: Conv =>
   import scalaz.concurrent.Strategy
   import Scalaz._
-  import Camel.MessageProcessor
 
   /** Concurrency strategy for each created processor (defaults to Strategy.Sequential) */
   var processorConcurrencyStrategy: Strategy = Strategy.Sequential
@@ -35,7 +34,7 @@ object CamelTestProcessors {
   //
 
   /** Fails with Exception and error message em (direct-style processor). */
-  def ds_failWith(em: String): Message => Message = (m: Message) => throw new Exception(em)
+  def ds_failWithMessage(em: String): Message => Message = (m: Message) => throw new Exception(em)
 
   /** Appends o to message body (direct-style processor) */
   def ds_appendToBody(o: Any)(implicit mgnt: ContextMgnt) = (m: Message) => m.appendToBody(o)
@@ -48,7 +47,7 @@ object CamelTestProcessors {
   //
 
   /** Fails with Exception and error message em. */
-  def failWith(em: String): MessageProcessor = cps(ds_failWith(em))
+  def failWithMessage(em: String): MessageProcessor = cps(ds_failWithMessage(em))
 
   /** Converts message body to String */
   def convertBodyToString(implicit mgnt: ContextMgnt) = cps(m => m.bodyTo[String])
@@ -81,5 +80,5 @@ object CamelTestProcessors {
   }
 
   /** Creates an CPS processor direct-style processor */
-  def cps(p: Message => Message): MessageProcessor = Camel.messageProcessor(p, processorConcurrencyStrategy)
+  def cps(p: Message => Message): MessageProcessor = messageProcessor(p, processorConcurrencyStrategy)
 }

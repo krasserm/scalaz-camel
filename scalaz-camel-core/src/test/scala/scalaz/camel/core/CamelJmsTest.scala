@@ -23,16 +23,13 @@ import scalaz.concurrent.Strategy._
 /**
  * @author Martin Krasser
  */
-class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
+class CamelJmsTest extends Camel with CamelTestProcessors with WordSpec with MustMatchers with BeforeAndAfterAll with BeforeAndAfterEach {
   import org.apache.camel.component.mock.MockEndpoint
   import org.apache.camel.spring.SpringCamelContext._
 
-  import Camel._
-  import CamelTestProcessors.{failWith => failWithErrorMessage, _}
-
-  Camel.dispatchConcurrencyStrategy = Sequential
-  Camel.multicastConcurrencyStrategy = Sequential
-  CamelTestProcessors.processorConcurrencyStrategy = Naive
+  dispatchConcurrencyStrategy = Sequential
+  multicastConcurrencyStrategy = Sequential
+  processorConcurrencyStrategy = Naive
 
   val context = springCamelContext("/context.xml")
   val template = context.createProducerTemplate
@@ -81,7 +78,7 @@ class CamelJmsTest extends WordSpec with MustMatchers with BeforeAndAfterAll wit
     "fast failure of routes" in {
       from("jms:queue:test-failure") {
         appendToBody("-1") >=> choose {
-          case Message("a-1", _) => failWithErrorMessage("failure")
+          case Message("a-1", _) => failWithMessage("failure")
           case Message("b-1", _) => printMessage
         } >=> to("mock:mock")
       }
