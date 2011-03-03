@@ -39,24 +39,9 @@ trait Conv {
   import Scalaz._
   import Message._
 
-  /**
-   * Type of a failed or successful response message. <strong>Will be replaced by
-   * <code>Either[Message, Message]</code> with scalaz versions greater than 5.0.</strong>
-   */
-  type MessageValidation = Validation[Message, Message]
-
-  /**
-   * Type of a (potentially asynchronous) message processor that passes a message validation
-   * result to a continuation of type <code>MessageValidation => Unit</code>. A CPS message
-   * processor.
-   */
-  type MessageProcessor = (Message, MessageValidation => Unit) => Unit
-
-  /**
-   * Type of a message processing route or a single route component. These can be composed
-   * via Kleisli composition.
-   */
-  type MessageRoute = Kleisli[Responder, MessageValidation, MessageValidation]
+  type MessageValidation = Conv.MessageValidation
+  type MessageProcessor = Conv.MessageProcessor
+  type MessageRoute = Conv.MessageRoute
 
   /**
    * Set the message exchange of m2 on m1 unless an exchange update should be skipped.
@@ -172,4 +157,25 @@ trait Conv {
       true
     }
   }
+}
+
+object Conv {
+  /**
+   * Type of a failed or successful response message. <strong>Will be replaced by
+   * <code>Either[Message, Message]</code> with scalaz versions greater than 5.0.</strong>
+   */
+  type MessageValidation = Validation[Message, Message]
+
+  /**
+   * Type of a (potentially asynchronous) message processor that passes a message validation
+   * result to a continuation of type <code>MessageValidation => Unit</code>. A CPS message
+   * processor.
+   */
+  type MessageProcessor = (Message, MessageValidation => Unit) => Unit
+
+  /**
+   * Type of a message processing route or a single route component. These can be composed
+   * via Kleisli composition.
+   */
+  type MessageRoute = Kleisli[Responder, MessageValidation, MessageValidation]
 }
