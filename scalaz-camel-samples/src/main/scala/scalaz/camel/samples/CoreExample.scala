@@ -113,19 +113,19 @@ object CoreExample extends Camel {
       assert(template.requestBody("direct:place-order", "wrong") == "order validation failed")
     }
 
-    // usage of responseFor (responseFor blocks)
+    // usage of process (process blocks)
     {
-      assertOrderProcessed { placeOrderRoute responseFor orderMessage }
-      placeOrderRoute responseFor Message("wrong") match {
+      assertOrderProcessed { placeOrderRoute process orderMessage }
+      placeOrderRoute process Message("wrong") match {
         case Failure(m) => assert(m.body == "wrong")
         case Success(m) => throw new Exception("unexpected success")
       }
     }
 
-    // usage of responsePromiseFor (responsePromiseFor does not block, promise.get blocks)
+    // usage of submit (submit does not block, promise.get blocks)
     {
       implicit val strategy = Strategy.Naive // needed for creation of promise
-      assertOrderProcessed { val promise = placeOrderRoute responsePromiseFor orderMessage; promise.get }
+      assertOrderProcessed { val promise = placeOrderRoute submit orderMessage; promise.get }
     }
 
     // continuation-passing style, CPS (respond does not block, latch.await blocks)

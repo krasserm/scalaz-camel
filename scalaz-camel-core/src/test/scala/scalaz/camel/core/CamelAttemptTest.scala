@@ -123,7 +123,7 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
         } >=> appendToBody("-3")
 
       mock("mock").expectedBodiesReceived("a-1-2", "a-1-2", "a-1-2")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Failure(m) => m.body must equal("a-1-2")
         case _          => fail("failure response expected")
       }
@@ -138,7 +138,7 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
         } >=> appendToBody("-3")
 
       mock("mock").expectedBodiesReceivedInAnyOrder("a-1-2", "a-1-m-2")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Failure(m) => m.body must equal("a-1-m-2")
         case _          => fail("failure response expected")
       }
@@ -153,7 +153,7 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
         } >=> appendToBody("-3")
 
       mock("mock").expectedBodiesReceivedInAnyOrder("a-1-2", "a-1-2-m-2", "a-1-2-m-2-m-2")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Failure(m) => m.body must equal("a-1-2-m-2-m-2")
         case _          => fail("failure response expected")
       }
@@ -172,7 +172,7 @@ trait CamelAttemptTest extends CamelTestContext with WordSpec with MustMatchers 
         } >=> appendToBody("-3")
 
       mock("mock").expectedBodiesReceivedInAnyOrder("a-1-2", "a-1-2-2")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Success(m) => m.body must equal("a-1-2-2-3")
         case _          => fail("success response expected")
       }

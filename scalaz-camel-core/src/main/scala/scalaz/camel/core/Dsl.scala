@@ -410,19 +410,19 @@ trait DslApply { this: Conv =>
    */
   class RouteApplication(r: MessageRoute) {
     /** Apply route r to message m and wait for response */
-    def responseFor(m: Message) =
+    def process(m: Message) =
       new ResponderApplication(r apply m.success).response
 
     /** Apply route r to message m and wait for response with timeout */
-    def responseFor(m: Message, timeout: Long, unit:  TimeUnit) =
+    def process(m: Message, timeout: Long, unit:  TimeUnit) =
       new ResponderApplication(r apply m.success).response(timeout: Long, unit:  TimeUnit)
 
     /** Apply route r to message m and get response promise */
-    def responsePromiseFor(m: Message)(implicit s: Strategy) =
+    def submit(m: Message)(implicit s: Strategy) =
       new ResponderApplication(r apply m.success).responsePromise
 
     /** Apply route r to message m and get response queue */
-    def responseQueueFor(m: Message) =
+    def submitN(m: Message) =
       new ResponderApplication(r apply m.success).responseQueue
   }
 }

@@ -41,42 +41,42 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
   "scalaz.camel.core.Camel" should support {
 
     "Kleisli composition of CPS message processors" in {
-      appendToBody("-1") >=> appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
+      appendToBody("-1") >=> appendToBody("-2") process Message("a") must equal(Success(Message("a-1-2")))
     }
 
     "Kleisli composition of direct-style message processors" in {
-      ds_appendToBody("-1") >=> ds_appendToBody("-2") responseFor Message("a") must equal(Success(Message("a-1-2")))
+      ds_appendToBody("-1") >=> ds_appendToBody("-2") process Message("a") must equal(Success(Message("a-1-2")))
     }
 
     "Kleisli composition of asynchonous Camel message processors" in {
-      repeatBody >=> repeatBody responseFor Message("a") must equal(Success(Message("aaaa")))
+      repeatBody >=> repeatBody process Message("a") must equal(Success(Message("aaaa")))
     }
 
     "Kleisli composition of synchonous Camel message processors" in {
-      repeatBody.sp >=> repeatBody.sp responseFor Message("a") must equal(Success(Message("aaaa")))
+      repeatBody.sp >=> repeatBody.sp process Message("a") must equal(Success(Message("aaaa")))
     }
 
     "Kleisli composition of Camel endpoint producers" in {
-      to("direct:predef-1") >=> to("direct:predef-2") responseFor Message("a") must equal(Success(Message("a-p1-p2")))
+      to("direct:predef-1") >=> to("direct:predef-2") process Message("a") must equal(Success(Message("a-p1-p2")))
     }
 
     "Kleisli composition of different types of message processors" in {
-      repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> ds_appendToBody("-2") >=> to("direct:predef-1") responseFor
+      repeatBody >=> repeatBody.sp >=> appendToBody("-1") >=> ds_appendToBody("-2") >=> to("direct:predef-1") process
          Message("a") must equal(Success(Message("aaaa-1-2-p1")))
     }
 
     "Kleisli composition of CPS processors defined inline" in {
       val route = appendToBody("-1") >=> { (m: Message, k: MessageValidation => Unit) => k(m.appendToBody("-x").success) }
-      route responseFor Message("a") must equal(Success(Message("a-1-x")))
+      route process Message("a") must equal(Success(Message("a-1-x")))
     }
 
     "Kleisli composition of direct-style processors defined inline" in {
       val route = appendToBody("-1") >=> { m: Message => m.appendToBody("-y") }
-      route responseFor Message("a") must equal(Success(Message("a-1-y")))
+      route process Message("a") must equal(Success(Message("a-1-y")))
     }
 
     "failure reporting with CPS processors" in {
-      failWithMessage("1") >=> failWithMessage("2") responseFor Message("a") match {
+      failWithMessage("1") >=> failWithMessage("2") process Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -86,7 +86,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "failure reporting with direct-style processors (that throw exceptions)" in {
-      ds_failWithMessage("1") >=> ds_failWithMessage("2") responseFor Message("a") match {
+      ds_failWithMessage("1") >=> ds_failWithMessage("2") process Message("a") match {
         case Success(_)          => fail("Failure result expected")
         case Failure(m: Message) => m.exception match {
           case Some(e: Exception) => e.getMessage must equal("1")
@@ -101,7 +101,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       // concurrency strategy used for dispatcher and processors.
       implicit val strategy = Strategy.Sequential
 
-      val promise = appendToBody("-1") >=> appendToBody("-2") responsePromiseFor Message("a")
+      val promise = appendToBody("-1") >=> appendToBody("-2") submit Message("a")
 
       promise.get match {
         case Success(m) => m.body must equal("a-1-2")
@@ -110,7 +110,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
     }
 
     "application of routes using response queues" in {
-      val queue = appendToBody("-1") >=> appendToBody("-2") responseQueueFor Message("a")
+      val queue = appendToBody("-1") >=> appendToBody("-2") submitN Message("a")
 
       queue.take match {
         case Success(m) => m.body must equal("a-1-2")
@@ -191,7 +191,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       // direct-style message processor (blocks contained until route generated response)
       val composite2: Message => Message = (m: Message) =>
-        appendToBody("-n3") >=> appendToBody("-n4") responseFor m match {
+        appendToBody("-n3") >=> appendToBody("-n4") process m match {
           case Success(m) => m
           case Failure(m) => throw m.exception.get
         }
@@ -213,8 +213,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       // custom scatter-gather
       val promise = for {
-        a <- appendToBody("-1") >=> appendToBody("-2") responsePromiseFor input
-        b <- appendToBody("-3") >=> appendToBody("-4") responsePromiseFor input
+        a <- appendToBody("-1") >=> appendToBody("-2") submit input
+        b <- appendToBody("-3") >=> appendToBody("-4") submit input
       } yield a |@| b apply { (m1: Message, m2: Message) => m1.appendToBody(" + %s" format m2.body) }
 
       promise.get must equal(Success(Message("test-1-2 + test-3-4")))
@@ -342,7 +342,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       val route1 = appendToBody("-1") >=> badguy1 >=> appendToBody("-2")
       val route2 = appendToBody("-1") >=> badguy2 >=> appendToBody("-2")
 
-      route1 responseFor Message("a").setOneway(true) match {
+      route1 process Message("a").setOneway(true) match {
         case Failure(m) => fail("unexpected failure")
         case Success(m) => {
           m.exchange.oneway must be (true)
@@ -350,7 +350,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
         }
       }
 
-      route2 responseFor Message("a").setOneway(true) match {
+      route2 process Message("a").setOneway(true) match {
         case Failure(m) => fail("unexpected failure")
         case Success(m) => {
           m.exchange.oneway must be (true)
@@ -373,8 +373,8 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
 
       val a = Strategy.Naive.apply { template.requestBody("direct:test-55", "a") }
       val b = Strategy.Naive.apply { template.requestBody("direct:test-55", "b") }
-      val x = Strategy.Naive.apply { r responseFor Message("x") }
-      val y = Strategy.Naive.apply { r responseFor Message("y") }
+      val x = Strategy.Naive.apply { r process Message("x") }
+      val y = Strategy.Naive.apply { r process Message("y") }
 
       y() must equal (Success(Message("y-done")))
       x() must equal (Success(Message("x-done")))

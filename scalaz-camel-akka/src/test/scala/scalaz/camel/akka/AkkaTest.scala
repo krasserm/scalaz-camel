@@ -41,7 +41,7 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
     "1:1 in-out messaging with an actor that is accessed via the native API" in {
       val appender = Actor.actorOf(new AppendReplyActor("-2", 1))
       val route = appendToBody("-1") >=> to(appender.manage) >=> appendToBody("-3")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Success(Message(body, _)) => body must equal("a-1-2-3")
         case _                         => fail("unexpected response")
       }
@@ -50,7 +50,7 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
     "1:n in-out messaging with an actor that is accessed via the native API" in {
       val appender = Actor.actorOf(new AppendReplyActor("-2", 3))
       val route = appendToBody("-1") >=> to(appender.manage) >=> appendToBody("-3")
-      val queue = route responseQueueFor (Message("a"))
+      val queue = route submitN Message("a")
       List(queue.take, queue.take, queue.take) foreach { e =>
         e match {
           case Success(Message(body, _)) => body must equal("a-1-2-3")
@@ -62,7 +62,7 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
     "1:1 in-out messaging with an actor that is accesses via the Camel actor component" in {
       val greeter = Actor.actorOf(new GreetReplyActor)
       val route = appendToBody("-1") >=> to(greeter.manage.uri) >=> appendToBody("-3")
-      route responseFor Message("a") match {
+      route process Message("a") match {
         case Success(Message(body, _)) => body must equal("a-1-hello-3")
         case _                         => fail("unexpected response")
       }
