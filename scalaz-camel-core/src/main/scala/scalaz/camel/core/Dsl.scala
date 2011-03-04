@@ -424,5 +424,24 @@ trait DslApply { this: Conv =>
     /** Apply route r to message m and get response queue */
     def submitN(m: Message) =
       new ResponderApplication(r apply m.success).responseQueue
+
+    /** Apply route r to messages ms and wait for (first) response */
+    def process(ms: Seq[Message]) =
+      submitN(ms).take
+
+    /** Apply route r to messages ms and wait for (first) response with timeout */
+    def process(ms: Seq[Message], timeout: Long, unit:  TimeUnit) =
+      submitN(ms).poll(timeout, unit)
+
+    /** Apply route r to messaged md and get response promise */
+    def submit(ms: Seq[Message])(implicit s: Strategy) =
+      promise(submitN(ms).take)
+
+    /** Apply route r to messaged md and get response queue */
+    def submitN(ms: Seq[Message]) = {
+      val queue = new java.util.concurrent.LinkedBlockingQueue[MessageValidation]
+      for (m <- ms) r apply m.success respond { mv => queue.put(mv) }
+      queue
+    }
   }
 }
