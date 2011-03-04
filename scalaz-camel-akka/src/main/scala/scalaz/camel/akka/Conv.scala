@@ -18,6 +18,8 @@ package scalaz.camel.akka
 import akka.actor.ActorRef
 import akka.actor.Sender
 
+import scalaz._
+
 import scalaz.camel.core.Conv._
 import scalaz.camel.core.Message
 
@@ -25,7 +27,15 @@ import scalaz.camel.core.Message
  * @author Martin Krasser
  */
 trait Conv {
+  import Scalaz._
+
   def messageProcessor(actor: ActorRef): MessageProcessor =
-    (m: Message, k: MessageValidation => Unit) => { actor.!(m)(Some(new Sender(k).start)) }
+    (m: Message, k: MessageValidation => Unit) => {
+      if (m.exchange.oneway) {
+        actor.!(m); k(m.success)
+      } else {
+        actor.!(m)(Some(new Sender(k).start))
+      } 
+    }
 }
 

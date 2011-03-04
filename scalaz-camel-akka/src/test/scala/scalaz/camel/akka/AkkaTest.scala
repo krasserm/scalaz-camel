@@ -15,6 +15,8 @@
  */
 package scalaz.camel.akka
 
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+
 import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.MustMatchers
 
@@ -59,7 +61,7 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
       }
     }
 
-    "1:1 in-out messaging with an actor that is accesses via the Camel actor component" in {
+    "1:1 in-out messaging with an actor that is accessed via the Camel actor component" in {
       val greeter = Actor.actorOf(new GreetReplyActor)
       val route = appendToBody("-1") >=> to(greeter.manage.uri) >=> appendToBody("-3")
       route process Message("a") match {
@@ -67,6 +69,28 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
         case _                         => fail("unexpected response")
       }
 
+    }
+
+    "in-only messaging with an actor that is accessed via the native API" in {
+      val latch = new CountDownLatch(1)
+      val appender = Actor.actorOf(new CountDownActor("a-1", latch))
+      val route = appendToBody("-1") >=> oneway >=> to(appender.manage) >=> appendToBody("-3")
+      route process Message("a") match {
+        case Success(Message(body, _)) => body must equal("a-1-3")
+        case _                         => fail("unexpected response")
+      }
+      latch.await(5, TimeUnit.SECONDS) must be (true)
+    }
+
+    "in-only messaging with an actor that is accessed via the Camel actor component" in {
+      val latch = new CountDownLatch(1)
+      val appender = Actor.actorOf(new CountDownActor("a-1", latch))
+      val route = appendToBody("-1") >=> oneway >=> to(appender.manage.uri) >=> appendToBody("-3")
+      route process Message("a") match {
+        case Success(Message(body, _)) => body must equal("a-1-3")
+        case _                         => fail("unexpected response")
+      }
+      latch.await(5, TimeUnit.SECONDS) must be (true)
     }
   }
 
@@ -79,6 +103,13 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
   class GreetReplyActor extends Actor {
     def receive = {
       case Msg(body, _) => self.reply("%s-hello" format body)
+    }
+  }
+
+  class CountDownActor(b: String, latch: CountDownLatch) extends Actor {
+    def receive = {
+      case Message(body, _) => if (body == b) latch.countDown
+      case Msg(body, _)     => if (body == b) latch.countDown
     }
   }
 }
