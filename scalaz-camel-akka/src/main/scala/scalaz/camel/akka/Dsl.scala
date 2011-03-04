@@ -17,9 +17,52 @@ package scalaz.camel.akka
 
 import scalaz.camel.core
 import scalaz.camel.core.Conv._
-import scalaz.camel.core.{ContextMgnt, EndpointMgnt, Message}
+import scalaz.camel.core.Message
 
+import akka.actor.Actor
 import akka.actor.ActorRef
+
+/**
+ * @author Martin Krasser
+ */
+object DslEip {
+  type AggregationFunction = (Message, Message) => Message
+  type CompletionPredicate = (Message) => Boolean
+}
+
+/**
+ * @author Martin Krasser
+ */
+trait DslEip { this: DslEndpoint =>
+  type AggregationFunction = DslEip.AggregationFunction
+  type CompletionPredicate = DslEip.CompletionPredicate
+
+  def aggregate(implicit am: ActorMgnt) = AggregateDefinition(am)
+
+  case class AggregateDefinition(am: ActorMgnt, f: AggregationFunction = (m1, m2) => m2) {
+    def using(f: AggregationFunction) = AggregateDefinition(am, f)
+    def until(p: CompletionPredicate): MessageProcessor = to(manage(Actor.actorOf(new Aggregator(f, p)))(am))
+  }
+
+  private class Aggregator(f: AggregationFunction, p: CompletionPredicate) extends Actor {
+    var current: Option[Message] = None
+
+    def receive = {
+      case message: Message => {
+        val m = update(message)
+        if (p(m)) self.reply(m)
+      }
+    }
+
+    def update(message: Message): Message = {
+      current match {
+        case None    => { current = Some(message) }
+        case Some(m) => { current = Some(f(m, message))}
+      }
+      current.get
+    }
+  }
+}
 
 /**
  * @author Martin Krasser

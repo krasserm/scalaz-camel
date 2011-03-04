@@ -22,6 +22,6 @@ import scalaz.camel.core
 /**
  * @author Martin Krasser
  */
-trait Akka extends DslEndpoint with core.DslEndpoint with Conv with core.Conv {
+trait Akka extends DslEndpoint with DslEip with Conv with core.DslEndpoint with core.Conv {
   implicit def actorRefToActorRefx(actor: ActorRef) = new ActorRefx(actor)
 }

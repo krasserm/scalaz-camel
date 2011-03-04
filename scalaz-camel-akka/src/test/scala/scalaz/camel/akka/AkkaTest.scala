@@ -92,6 +92,21 @@ trait AkkaTest extends AkkaTestContext with WordSpec with MustMatchers with Befo
       }
       latch.await(5, TimeUnit.SECONDS) must be (true)
     }
+
+    "aggregation of messages" in {
+      val f: AggregationFunction = (m1, m2) => m1.appendToBody(m2.body)
+      val p: CompletionPredicate = m => m.bodyAs[String].length == 5
+
+      val ms = for (i <- 1 to 5) yield Message("%s" format i)
+      
+      (aggregate using f until p) >=> appendToBody("-done") process ms match {
+        case Success(Message(body: String, _)) => dispatchConcurrencyStrategy match {
+          case Strategy.Sequential => body must equal ("12345-done")
+          case _                   => body.length must be (10)
+        }
+        case _ => fail("unexpected response")
+      }
+    }
   }
 
   class AppendReplyActor(s: String, c: Int) extends Actor {
