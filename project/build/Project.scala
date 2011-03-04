@@ -15,6 +15,7 @@ class Project(info: ProjectInfo) extends ParentProject(info) with IdeaProject {
     lazy val cameHttp     = "org.apache.camel" % "camel-http" % CamelVersion
     lazy val camelJetty   = "org.apache.camel" % "camel-jetty" % CamelVersion
     lazy val camelSpring  = "org.apache.camel" % "camel-spring" % CamelVersion
+    lazy val akkaCore     = ""
     lazy val activemqCore = "org.apache.activemq" % "activemq-core" % "5.3.2"
     lazy val scalatest    = "org.scalatest" % "scalatest" % "1.2"
     lazy val junit        = "junit" % "junit" % "4.8.2"
@@ -35,7 +36,11 @@ class Project(info: ProjectInfo) extends ParentProject(info) with IdeaProject {
     lazy val junit        = Dependencies.junit % "test"
   }
 
-  class ProjectAkka(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {
+  class ProjectAkka(info: ProjectInfo) extends DefaultProject(info) with IdeaProject with AkkaProject {
+    lazy val akkaRepo = "Akka Repository" at "http://akka.io/repository/"
+
+    // compile
+    lazy val akkaCamel = akkaModule("camel")
   }
 
   class ProjectSamples(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {

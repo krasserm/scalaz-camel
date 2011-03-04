@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration scan="false" debug="false">
+  <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>[%4p] [%d{ISO8601}] [%t] %c{1}: %m%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="akka" level="INFO"/>
+
+  <root level="INFO">
+    <appender-ref ref="stdout"/>
+  </root>
+</configuration>
