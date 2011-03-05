@@ -17,7 +17,7 @@ package scalaz.camel.akka
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
-import org.scalatest.{WordSpec, BeforeAndAfterAll, BeforeAndAfterEach}
+import org.scalatest.{WordSpec, BeforeAndAfterAll}
 import org.scalatest.matchers.MustMatchers
 
 import akka.actor.Actor

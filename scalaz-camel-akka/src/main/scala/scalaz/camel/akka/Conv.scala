@@ -29,6 +29,10 @@ import scalaz.camel.core.Message
 trait Conv {
   import Scalaz._
 
+  /**
+   * Converts <code>actor</code> into a <code>MessageProcessor</code>. The created processor
+   * supports multiple replies from <code>actor</code>.
+   */
   def messageProcessor(actor: ActorRef): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       if (m.exchange.oneway) {

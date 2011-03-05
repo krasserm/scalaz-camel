@@ -27,9 +27,20 @@ import org.apache.camel.spi.LifecycleStrategy
 import scalaz.camel.core.ContextMgnt
 
 /**
+ * Manages the life cycle of actors. Should be used as follows:
+ *
+ * <pre>
+ * val context: CamelContext = ...
+ * implicit val router = new Router(context) with ActorMgnt
+ * </pre>
+ *
  * @author Martin Krasser
  */
 trait ActorMgnt { this: ContextMgnt =>
+
+  /**
+   * Binds the life cycle of <code>actor</code> to that of the current CamelContext.
+   */
   def manage(actor: ActorRef): ActorRef = {
     context.addLifecycleStrategy(new LifecycleSync(actor))
     val service = context.asInstanceOf[ServiceSupport]

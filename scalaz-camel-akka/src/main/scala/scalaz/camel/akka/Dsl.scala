@@ -37,8 +37,14 @@ trait DslEip { this: DslEndpoint =>
   type AggregationFunction = DslEip.AggregationFunction
   type CompletionPredicate = DslEip.CompletionPredicate
 
+  /**
+   * <strong>Preliminary</strong> support for actor-based aggregator EIP.
+   */
   def aggregate(implicit am: ActorMgnt) = AggregateDefinition(am)
 
+  /**
+   * <strong>Preliminary</strong> support for actor-based aggregator EIP.
+   */
   case class AggregateDefinition(am: ActorMgnt, f: AggregationFunction = (m1, m2) => m2) {
     def using(f: AggregationFunction) = AggregateDefinition(am, f)
     def until(p: CompletionPredicate): MessageProcessor = to(manage(Actor.actorOf(new Aggregator(f, p)))(am))
@@ -68,9 +74,16 @@ trait DslEip { this: DslEndpoint =>
  * @author Martin Krasser
  */
 trait DslEndpoint { this: core.DslEndpoint with Conv =>
+  /**
+   * Binds the life cycle of <code>actor</code> to that of the current CamelContext.
+   */
   def manage(actor: ActorRef)(implicit am: ActorMgnt): ActorRef =
     am.manage(actor)
 
+  /**
+   * Creates a <code>MessageProcessor</code> for communicating with <code>actor</code>.
+   * The created processor supports multiple replies from <code>actor</code>.
+   */
   def to(actor: ActorRef): MessageProcessor =
     messageProcessor(actor)
 }

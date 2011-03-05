@@ -24,12 +24,26 @@ import scalaz.camel.core.Conv._
 import scalaz.camel.core.Message
 
 /**
+ * Sender used for communication with actors via <code>!</code>. Replies to this
+ * sender are passed to continuation <code>k</code>.
+ *
  * @author Martin Krasser
  */
 sealed class Sender(k: MessageValidation => Unit) extends ActorRef with ScalaActorRef {
   def start = { _status = akka.actor.ActorRefInternals.RUNNING; this }
   def stop = { _status = akka.actor.ActorRefInternals.SHUTDOWN }
 
+  /**
+   * Processes replies by passing it to continuation <code>k</code>. If the reply is of
+   * <ul>
+   * <li>type <code>MessageValidation</code> then it is passed to <code>k</code> as is</li>
+   * <li>type <code>Message</code> then it is converted to either <code>Success</code> or
+   * <code>Failure</code> (depending on the the <code>message.exception</code> value)
+   * before passing to <code>k</code></li>.
+   * <li>any other type it is used as body for <code>Success(Message(body))</code> that
+   * is then passed to <code>k</code></li>.
+   * </ul>
+   */
   protected[akka] def postMessageToMailbox(message: Any, senderOption: Option[ActorRef]) = {
     import scalaz._
     import Scalaz._

@@ -20,6 +20,8 @@ import akka.actor.ActorRef
 import scalaz.camel.core
 
 /**
+ * Provides the Akka-specific Camel DSL.
+ *
  * @author Martin Krasser
  */
 trait Akka extends DslEndpoint with DslEip with Conv with core.DslEndpoint with core.Conv {

@@ -18,10 +18,17 @@ package scalaz.camel.akka
 import akka.actor.ActorRef
 
 /**
+ * <code>ActorRef</code> wrapper.
+ *
  * @author Martin Krasser
  */
 class ActorRefx(actor: ActorRef) {
+  /** Binds the life cycle of <code>actor</code> to that of the current CamelContext */
   def manage(implicit am: ActorMgnt): ActorRef = am.manage(actor)
+
+  /** Returns the endpoint URI of <code>actor</code> */
   def uri: String = "actor:uuid:%s" format actor.uuid
+
+  /** Returns the endpoint URI of <code>actor</code> containing the given <code>options</code> */
   def uri(options: String): String = "%s?%s" format (uri, options)
 }
