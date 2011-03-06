@@ -35,7 +35,7 @@ trait Conv {
    */
   def messageProcessor(actor: ActorRef): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
-      if (m.exchange.oneway) {
+      if (m.context.oneway) {
         actor.!(m); k(m.success)
       } else {
         actor.!(m)(Some(new Sender(k).start))

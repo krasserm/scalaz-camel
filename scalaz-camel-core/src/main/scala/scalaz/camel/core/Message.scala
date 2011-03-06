@@ -24,34 +24,34 @@ import org.apache.camel.{Exchange, ExchangePattern, CamelContext, Message => Cam
  */
 case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
-  private val SkipExchangeUpdate = "scalaz.camel.update.exchange.skip"
+  private val SkipContextUpdate = "scalaz.camel.update.context.skip"
 
   // TODO: consider making Message a parameterized type
   // TODO: consider making Message an instance of Functor
 
-  val exchange = MessageExchange()
+  val context = MessageContext()
 
   override def toString = "Message: %s" format body
 
-  def setBody(body: Any) = Message(body, headers, exchange)
+  def setBody(body: Any) = Message(body, headers, context)
 
-  def setHeaders(headers: Map[String, Any]) = Message(body, headers, exchange)
+  def setHeaders(headers: Map[String, Any]) = Message(body, headers, context)
 
-  def addHeaders(headers: Map[String, Any]) = Message(body, this.headers ++ headers, exchange)
+  def addHeaders(headers: Map[String, Any]) = Message(body, this.headers ++ headers, context)
 
-  def addHeader(header: (String, Any)) = Message(body, headers + header, exchange)
+  def addHeader(header: (String, Any)) = Message(body, headers + header, context)
 
-  def removeHeader(headerName: String) = Message(body, headers - headerName, exchange)
+  def removeHeader(headerName: String) = Message(body, headers - headerName, context)
 
-  def setExchange(exch: MessageExchange) = Message(body, headers, exch).setSkipExchangeUpdate(true)
+  def setContext(context: MessageContext) = Message(body, headers, context).setSkipContextUpdate(true)
 
-  def setExchangeFrom(m: Message) = setExchange(m.exchange)
+  def setContextFrom(m: Message) = setContext(m.context)
 
-  def setOneway(oneway: Boolean) = setExchange(exchange.setOneway(oneway))
+  def setOneway(oneway: Boolean) = setContext(context.setOneway(oneway))
 
-  def setException(e: Exception) = setExchange(exchange.setException(Some(e)))
+  def setException(e: Exception) = setContext(context.setException(Some(e)))
 
-  def exception: Option[Exception] = exchange.exception
+  def exception: Option[Exception] = context.exception
 
   def headers(names: Set[String]): Map[String, Any] = headers.filter(names contains _._1)
 
@@ -65,7 +65,7 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 
   // TODO: remove once Message is a Functor
   def bodyTo[A](implicit m: Manifest[A], mgnt: ContextMgnt): Message =
-    Message(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body), headers, exchange)
+    Message(convertTo[A](m.erasure.asInstanceOf[Class[A]], mgnt.context)(body), headers, context)
 
   // TODO: remove once Message is a Functor
   def transform[A](transformer: A => Any)(implicit m: Manifest[A], mgnt: ContextMgnt) =
@@ -76,14 +76,14 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
     setBody(bodyAs[String] + convertTo[String](classOf[String], mgnt.context)(body))
 
   private[camel] def exceptionHandled =
-    Message(body, headers, exchange.setException(None))
+    Message(body, headers, context.setException(None))
 
   // Experimental
-  private[camel] def setSkipExchangeUpdate(skip: Boolean) =
-    if (skip) addHeader(SkipExchangeUpdate, skip) else removeHeader(SkipExchangeUpdate)
+  private[camel] def setSkipContextUpdate(skip: Boolean) =
+    if (skip) addHeader(SkipContextUpdate, skip) else removeHeader(SkipContextUpdate)
 
   // Experimental
-  private[camel] def skipExchangeUpdate = header(SkipExchangeUpdate) match {
+  private[camel] def skipContextUpdate = header(SkipContextUpdate) match {
     case Some(v) => v.asInstanceOf[Boolean]
     case None    => false
   }
@@ -93,14 +93,14 @@ case class Message(body: Any, headers: Map[String, Any] = Map.empty) {
 }
 
 /**
- * An immutable representation of a Camel exchange.
+ * An immutable representation of a Camel Exchange.
  *
  * @author Martin Krasser
  */
-case class MessageExchange(oneway: Boolean, exception: Option[Exception]) {
-  def setOneway(o: Boolean) = MessageExchange(o, exception)
+case class MessageContext(oneway: Boolean, exception: Option[Exception]) {
+  def setOneway(o: Boolean) = MessageContext(o, exception)
 
-  def setException(e: Option[Exception]) = MessageExchange(oneway, e)
+  def setException(e: Option[Exception]) = MessageContext(oneway, e)
 }
 
 /**
@@ -110,21 +110,21 @@ object Message {
   /** Creates a MessageConverter from a Camel message */
   implicit def camelMessageToConverter(cm: CamelMessage): MessageConverter = new MessageConverter(cm)
 
-  /** Create a Message with body, headers and a message exchange */
-  def apply(body: Any, headers: Map[String, Any], exch: MessageExchange): Message = new Message(body, headers) {
-    override val exchange = exch
+  /** Create a Message with body, headers and a message context */
+  def apply(body: Any, headers: Map[String, Any], ctx: MessageContext): Message = new Message(body, headers) {
+    override val context = ctx
   }
 }
 
 /**
  * @author Martin Krasser
  */
-object MessageExchange {
-  /** Creates a MessageExchangeConverter from a Camel exchange */
-  implicit def camelExchangeToConverter(ce: Exchange) = new MessageExchangeConverter(ce)
+object MessageContext {
+  /** Creates a MessageContextConverter from a Camel exchange */
+  implicit def camelExchangeToConverter(ce: Exchange) = new MessageContextConverter(ce)
 
-  /** Create a default MessageExchange with oneway set to false and no exception */
-  def apply(): MessageExchange = MessageExchange(false, None)
+  /** Create a default MessageContext with oneway set to false and no exception */
+  def apply(): MessageContext = MessageContext(false, None)
 }
 
 /**
@@ -134,10 +134,10 @@ object MessageExchange {
  */
 class MessageConverter(val cm: CamelMessage) {
   import scala.collection.JavaConversions._
-  import MessageExchange._
+  import MessageContext._
 
   def fromMessage(m: Message): CamelMessage = {
-    cm.getExchange.fromMessageExchange(m.exchange)
+    cm.getExchange.fromMessageContext(m.context)
     cm.setBody(m.body)
     for (h <- m.headers) cm.getHeaders.put(h._1, h._2.asInstanceOf[AnyRef])
     cm
@@ -145,18 +145,18 @@ class MessageConverter(val cm: CamelMessage) {
 
   def toMessage: Message = toMessage(Map.empty)
   def toMessage(headers: Map[String, Any]): Message =
-    Message(cm.getBody, cmHeaders(cm, headers), cm.getExchange.toMessageExchange)
+    Message(cm.getBody, cmHeaders(cm, headers), cm.getExchange.toMessageContext)
 
   private def cmHeaders(cm: CamelMessage, headers: Map[String, Any]) = headers ++ cm.getHeaders
 }
 
 /**
- * Converts between <code>scalaz.camel.MessageExchange</code> and <code>org.apache.camel.Exchange</code>.
+ * Converts between <code>scalaz.camel.MessageContext</code> and <code>org.apache.camel.Exchange</code>.
  *
  * @author Martin Krasser
  */
-class MessageExchangeConverter(val ce: Exchange) {
-  def fromMessageExchange(me: MessageExchange) = {
+class MessageContextConverter(val ce: Exchange) {
+  def fromMessageContext(me: MessageContext) = {
     ce.setPattern(if (me.oneway) ExchangePattern.InOnly else ExchangePattern.InOut)
     ce.setException(me.exception match {
         case Some(e) => e
@@ -164,7 +164,7 @@ class MessageExchangeConverter(val ce: Exchange) {
       })
   }
 
-  def toMessageExchange = MessageExchange(
+  def toMessageContext = MessageContext(
     if (ce.getPattern.isOutCapable) false else true,
     if (ce.getException == null) None else Some(ce.getException)
   )

@@ -44,10 +44,10 @@ trait Conv {
   type MessageRoute = Conv.MessageRoute
 
   /**
-   * Set the message exchange of m2 on m1 unless an exchange update should be skipped.
+   * Set the message context of m2 on m1 unless an context update should be skipped.
    */
-  private val updateExchange = (m1: Message) => (m2: Message) =>
-    (if (!m1.skipExchangeUpdate) m1.setExchangeFrom(m2) else m1).setSkipExchangeUpdate(false)
+  private val updateContext = (m1: Message) => (m2: Message) =>
+    (if (!m1.skipContextUpdate) m1.setContextFrom(m2) else m1).setSkipContextUpdate(false)
 
   /**
    *  Concurrency strategy for dispatching messages along the processor chain (i.e. route).
@@ -69,7 +69,7 @@ trait Conv {
    */
   class MessageValidationResponder(v: MessageValidation, p: MessageProcessor) extends Responder[MessageValidation] {
     def respond(k: MessageValidation => Unit) = v match {
-      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateExchange /* experimental */)))
+      case Success(m) => dispatchStrategy.apply(p(m, r => k(v <*> r ∘ updateContext /* experimental */)))
       case Failure(m) => dispatchStrategy.apply(k(Failure(m)))
     }
   }

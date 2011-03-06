@@ -327,9 +327,9 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       template.requestBody("direct:test-50b", "b") must equal ("b-1-2")
     }
 
-    "preserving the message exchange even if a processor drops it" in {
-      // Function that returns *new* message that doesn't contain the exchange of
-      // the input message (it contains a new default exchange). The exchange of
+    "preserving the message context even if a processor drops it" in {
+      // Function that returns *new* message that doesn't contain the context of
+      // the input message (it contains a new default context). The context of
       // the input message will be set on the result message by the MessageValidationResponder
       val badguy1 = (m: Message) => new Message("bad")
 
@@ -337,7 +337,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       // Function that returns a *new* message on which setException is called as well.
       // Returning a new message *and* calling either setException or setOneway required
       // explicit setting on the exchange from the input message as well.
-      val badguy2 = (m: Message) => new Message("bad").setExchangeFrom(m).setException(new Exception("x"))
+      val badguy2 = (m: Message) => new Message("bad").setContextFrom(m).setException(new Exception("x"))
 
       val route1 = appendToBody("-1") >=> badguy1 >=> appendToBody("-2")
       val route2 = appendToBody("-1") >=> badguy2 >=> appendToBody("-2")
@@ -345,7 +345,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       route1 process Message("a").setOneway(true) match {
         case Failure(m) => fail("unexpected failure")
         case Success(m) => {
-          m.exchange.oneway must be (true)
+          m.context.oneway must be (true)
           m.body must equal ("bad-2")
         }
       }
@@ -353,7 +353,7 @@ trait CamelTest extends CamelTestContext with WordSpec with MustMatchers with Be
       route2 process Message("a").setOneway(true) match {
         case Failure(m) => fail("unexpected failure")
         case Success(m) => {
-          m.exchange.oneway must be (true)
+          m.context.oneway must be (true)
           m.body must equal ("bad-2")
         }
       }
