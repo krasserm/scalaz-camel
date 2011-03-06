@@ -47,14 +47,14 @@ trait DslEip { this: Conv =>
   protected def multicastStrategy: Strategy
 
   /**
-   * Creates a message processor that changes the message's exchange pattern to one-way.
+   * Creates a message processor that sets the message context's oneway field to true.
    */
-  def oneway = messageProcessor { m: Message => m.setOneway(true) }
+  def oneway: MessageProcessor = oneway(true)
 
   /**
-   * Creates a message processor that changes the message's exchange pattern to two-way.
+   * Creates a message processor that sets the message context's oneway field to given value.
    */
-  def twoway = messageProcessor { m: Message => m.setOneway(false) }
+  def oneway(oneway: Boolean): MessageProcessor = messageProcessor { m: Message => m.setOneway(oneway) }
 
   /**
    * Creates a message processor that routes messages based on pattern matching. Implements
