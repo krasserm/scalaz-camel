@@ -27,7 +27,7 @@ import scalaz.camel.core.Message
  * @author Martin Krasser
  */
 trait Conv {
-  import Scalaz._
+  import Scalaz.success
 
   /**
    * Converts <code>actor</code> into a <code>MessageProcessor</code>. The created processor
@@ -36,7 +36,7 @@ trait Conv {
   def messageProcessor(actor: ActorRef): MessageProcessor =
     (m: Message, k: MessageValidation => Unit) => {
       if (m.context.oneway) {
-        actor.!(m); k(m.success)
+        actor.!(m); k(success(m))
       } else {
         actor.!(m)(Some(new Sender(k).start))
       } 

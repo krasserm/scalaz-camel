@@ -70,4 +70,5 @@ private[camel] class LifecycleSync(actor: ActorRef) extends LifecycleStrategy {
   def onEndpointAdd(endpoint: Endpoint) = {}
   def onComponentRemove(name: String, component: Component) = {}
   def onComponentAdd(name: String, component: Component) = {}
+  def onThreadPoolAdd(context: CamelContext, executor: ThreadPoolExecutor, s: String, s1: String, s2: String, s3: String) {}
 }

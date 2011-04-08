@@ -67,6 +67,7 @@ sealed class Sender(k: MessageValidation => Unit) extends ActorRef with ScalaAct
   def homeAddress_=(address: InetSocketAddress): Unit = unsupported
   def remoteAddress: Option[InetSocketAddress] = unsupported
   def link(actorRef: ActorRef): Unit = unsupported
+  def linkedActors: java.util.Map[Uuid, ActorRef] = unsupported
   def unlink(actorRef: ActorRef): Unit = unsupported
   def startLink(actorRef: ActorRef): Unit = unsupported
   def startLinkRemote(actorRef: ActorRef, hostname: String, port: Int): Unit = unsupported
@@ -83,7 +84,6 @@ sealed class Sender(k: MessageValidation => Unit) extends ActorRef with ScalaAct
   protected[akka] def restart(reason: Throwable, maxNrOfRetries: Option[Int], withinTimeRange: Option[Int]): Unit = unsupported
   protected[akka] def restartLinkedActors(reason: Throwable, maxNrOfRetries: Option[Int], withinTimeRange: Option[Int]): Unit = unsupported
   protected[akka] def handleTrapExit(dead: ActorRef, reason: Throwable): Unit = unsupported
-  protected[akka] def linkedActors: java.util.Map[Uuid, ActorRef] = unsupported
   protected[akka] def linkedActorsAsList: List[ActorRef] = unsupported
   protected[akka] def invoke(messageHandle: MessageInvocation): Unit = unsupported
   protected[akka] def remoteAddress_=(addr: Option[InetSocketAddress]): Unit = unsupported

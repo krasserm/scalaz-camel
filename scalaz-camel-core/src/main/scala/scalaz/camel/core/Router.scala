@@ -21,6 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import org.apache.camel._
 import org.apache.camel.impl.ServiceSupport
 import org.apache.camel.spi.LifecycleStrategy
+import java.lang.String
 
 /**
  * Registers created endpoint consumers and producers at the CamelContext for
@@ -126,4 +127,5 @@ private[camel] class LifecycleSync(service: Service) extends LifecycleStrategy {
   def onEndpointAdd(endpoint: Endpoint) = {}
   def onComponentRemove(name: String, component: Component) = {}
   def onComponentAdd(name: String, component: Component) = {}
+  def onThreadPoolAdd(context: CamelContext, executor: ThreadPoolExecutor, s: String, s1: String, s2: String, s3: String) {}
 }
