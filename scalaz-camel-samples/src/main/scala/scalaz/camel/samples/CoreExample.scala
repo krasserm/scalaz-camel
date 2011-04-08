@@ -133,9 +133,15 @@ object CoreExample extends Camel {
       import java.util.concurrent.CountDownLatch
       import java.util.concurrent.TimeUnit
 
-      val latch = new CountDownLatch(1)
-      placeOrderRoute apply orderMessage.success respond { mv => assertOrderProcessed(mv); latch.countDown }
-      if (!latch.await(10, TimeUnit.SECONDS)) throw new Exception("unexpected order processing failure")
+      assertOrderProcessed {
+        var result: MessageValidation = Message("no response").fail
+        val latch = new CountDownLatch(1)
+
+        placeOrderRoute apply orderMessage.success respond { mv => result = mv; latch.countDown }
+        latch.await(10, TimeUnit.SECONDS)
+
+        result
+      }
     }
 
     // -----------------------------------------------------------------
