@@ -3,6 +3,4 @@ It applies functional programming (FP) concepts to "enterprise integration patte
 
 The scalaz-camel DSL is an alternative to Camel's existing Java DSL and Scala DSL. It was re-designed from scratch with the goal of a better and more native integration with the Scala programming language.
 
-See also "this interview":http://jaxenter.com/scalaz-camel-fully-leveraging-what-scala-and-scalaz-offers-for-functional-programming-34717.html.
-
 "Learn more ...":https://github.com/krasserm/scalaz-camel/wiki
