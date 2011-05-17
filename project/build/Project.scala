@@ -1,9 +1,9 @@
 import sbt._
 
 class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject with AkkaProject {
-  val ScalazVersion = "5.0"
-  val CamelVersion = "2.7.0"
-  val AkkaVersion = "1.1-M1"
+  val ScalazVersion = "6.0.RC2"
+  val CamelVersion = "2.7.1"
+  val AkkaVersion = "1.1"
 
   lazy val akkaModuleConfig = ModuleConfiguration("se.scalablesolutions.akka", AkkaRepositories.Akka_Repository)
 
@@ -12,7 +12,7 @@ class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject w
   lazy val scalazCamelSamples = project("scalaz-camel-samples", "scalaz-camel-samples", new ProjectSamples(_), scalazCamelCore)
 
   object Dependencies {
-    lazy val scalazCore   = "com.googlecode.scalaz" % "scalaz-core_2.8.0" % ScalazVersion
+    lazy val scalazCore   = "org.scalaz" % "scalaz-core_2.9.0" % ScalazVersion
     lazy val camelCore    = "org.apache.camel" % "camel-core" % CamelVersion
     lazy val camelJms     = "org.apache.camel" % "camel-jms" % CamelVersion
     lazy val cameHttp     = "org.apache.camel" % "camel-http" % CamelVersion
@@ -20,8 +20,8 @@ class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject w
     lazy val camelSpring  = "org.apache.camel" % "camel-spring" % CamelVersion
 
     lazy val activemqCore = "org.apache.activemq" % "activemq-core" % "5.3.2"
-    lazy val slf4jSimple  = "org.slf4j" % "slf4j-simple" % "1.5.11"
-    lazy val scalatest    = "org.scalatest" % "scalatest" % "1.4-SNAPSHOT"
+    lazy val slf4jSimple  = "org.slf4j" % "slf4j-simple" % "1.6.1"
+    lazy val scalatest    = "org.scalatest" % "scalatest_2.9.0" % "1.4.1"
     lazy val junit        = "junit" % "junit" % "4.8.2"
   }
 
@@ -43,7 +43,8 @@ class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject w
 
   class ProjectAkka(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {
     // Compile
-    lazy val akkaCamel = "se.scalablesolutions.akka" % "akka-camel" % AkkaVersion
+    lazy val camelCore    = Dependencies.camelCore % "compile"
+    lazy val akkaCamel    = "se.scalablesolutions.akka" % "akka-camel" % AkkaVersion
   }
 
   class ProjectSamples(info: ProjectInfo) extends DefaultProject(info) with IdeaProject {
