@@ -44,7 +44,7 @@ sealed class Sender(k: MessageValidation => Unit) extends ActorRef with ScalaAct
    * is then passed to <code>k</code></li>.
    * </ul>
    */
-  protected[akka] def postMessageToMailbox(message: Any, senderOption: Option[ActorRef]) = {
+  protected[akka] def postMessageToMailbox(message: Any, channel: UntypedChannel) = {
     import scalaz._
     import Scalaz._
 
@@ -78,7 +78,7 @@ sealed class Sender(k: MessageValidation => Unit) extends ActorRef with ScalaAct
   def shutdownLinkedActors: Unit = unsupported
   def supervisor: Option[ActorRef] = unsupported
   def homeAddress: Option[InetSocketAddress] = None
-  protected[akka] def postMessageToMailboxAndCreateFutureResultWithTimeout[T](message: Any, timeout: Long, senderOption: Option[ActorRef], senderFuture: Option[CompletableFuture[T]]) = unsupported
+  protected[akka] def postMessageToMailboxAndCreateFutureResultWithTimeout(message: Any, timeout: Long, channel: UntypedChannel) = unsupported
   protected[akka] def mailbox: AnyRef = unsupported
   protected[akka] def mailbox_=(msg: AnyRef):AnyRef = unsupported
   protected[akka] def restart(reason: Throwable, maxNrOfRetries: Option[Int], withinTimeRange: Option[Int]): Unit = unsupported

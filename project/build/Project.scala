@@ -1,9 +1,9 @@
 import sbt._
 
 class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject with AkkaProject {
-  val ScalazVersion = "6.0.RC2"
-  val CamelVersion = "2.7.1"
-  val AkkaVersion = "1.1"
+  val ScalazVersion = "6.0.1"
+  val CamelVersion = "2.8.0"
+  val AkkaVersion = "1.2-RC3"
 
   lazy val akkaModuleConfig = ModuleConfiguration("se.scalablesolutions.akka", AkkaRepositories.Akka_Repository)
 
@@ -12,7 +12,7 @@ class Project(info: ProjectInfo) extends DefaultProject(info) with IdeaProject w
   lazy val scalazCamelSamples = project("scalaz-camel-samples", "scalaz-camel-samples", new ProjectSamples(_), scalazCamelCore)
 
   object Dependencies {
-    lazy val scalazCore   = "org.scalaz" % "scalaz-core_2.9.0" % ScalazVersion
+    lazy val scalazCore   = "org.scalaz" % "scalaz-core_2.9.0-1" % ScalazVersion
     lazy val camelCore    = "org.apache.camel" % "camel-core" % CamelVersion
     lazy val camelJms     = "org.apache.camel" % "camel-jms" % CamelVersion
     lazy val cameHttp     = "org.apache.camel" % "camel-http" % CamelVersion
