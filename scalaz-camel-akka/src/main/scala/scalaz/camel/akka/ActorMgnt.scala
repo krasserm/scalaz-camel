@@ -21,7 +21,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import akka.actor.ActorRef
 
 import org.apache.camel._
-import org.apache.camel.impl.ServiceSupport
+import org.apache.camel.support.ServiceSupport
 import org.apache.camel.spi.LifecycleStrategy
 
 import scalaz.camel.core.ContextMgnt
@@ -71,4 +71,5 @@ private[camel] class LifecycleSync(actor: ActorRef) extends LifecycleStrategy {
   def onComponentRemove(name: String, component: Component) = {}
   def onComponentAdd(name: String, component: Component) = {}
   def onThreadPoolAdd(context: CamelContext, executor: ThreadPoolExecutor, s: String, s1: String, s2: String, s3: String) {}
+  def onErrorHandlerAdd(routeContext: RouteContext, errorHandler: Processor, errorHandlerBuilder: ErrorHandlerFactory) {}
 }
