@@ -72,8 +72,9 @@ object ScalazCamelBuild extends Build {
     dependencies = Seq(core),
     settings = defaultSettings ++ Seq(libraryDependencies ++= Seq(
       Dependencies.scalazCore % "compile", Dependencies.camelCore % "compile",
-      Dependencies.camelJms % "test", Dependencies.cameHttp % "test",
-      Dependencies.camelJetty % "test", Dependencies.camelSpring % "test",
+      Dependencies.camelJetty % "test", Dependencies.camelSpring % "compile",
+      Dependencies.camelJms % "test", Dependencies.camelJms % "test",
+      Dependencies.camelJetty % "test", Dependencies.camelSpring % "compile",
       Dependencies.activemqCore % "test", Dependencies.slf4jSimple % "test",
       Dependencies.scalatest % "test", Dependencies.junit % "test"))
 
