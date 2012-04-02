@@ -46,6 +46,8 @@ object ScalazCamelBuild extends Build {
     lazy val junit = "junit" % "junit" % V.Junit
   }
 
+  lazy val root = Project("root", file(".")) aggregate(core, actor, samples)
+
   lazy val core = Project(
     id = "scalaz-camel-core",
     base = file("scalaz-camel-core"),
@@ -77,6 +79,6 @@ object ScalazCamelBuild extends Build {
       Dependencies.camelJetty % "test", Dependencies.camelSpring % "compile",
       Dependencies.activemqCore % "test", Dependencies.slf4jSimple % "test",
       Dependencies.scalatest % "test", Dependencies.junit % "test"))
-
   )
+
 }
