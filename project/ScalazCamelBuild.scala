@@ -6,7 +6,7 @@ object ScalazCamelBuild extends Build {
   lazy val buildSettings = Seq(
     organization := "scalaz.camel",
     version := "0.4-SNAPSHOT",
-    scalaVersion := "2.9.1"
+    scalaVersion := "2.9.2"
   )
 
   override lazy val settings = super.settings ++ buildSettings
@@ -24,15 +24,15 @@ object ScalazCamelBuild extends Build {
 
     object V {
       val Scalaz = "6.0.4"
-      val Camel = "2.9.1"
+      val Camel = "2.9.2"
       val Akka = "1.3"
-      val ActiveMQ = "5.5.0"
-      val Slf4j = "1.6.1"
-      val ScalaTest = "1.6.1"
+      val ActiveMQ = "5.6.0"
+      val Slf4j = "1.6.4"
+      val ScalaTest = "1.7.2"
       val Junit = "4.8.2"
     }
 
-    lazy val scalazCore = "org.scalaz" % "scalaz-core_2.9.1" % V.Scalaz
+    lazy val scalazCore = "org.scalaz" %% "scalaz-core" % V.Scalaz
     lazy val camelCore = "org.apache.camel" % "camel-core" % V.Camel
     lazy val camelJms = "org.apache.camel" % "camel-jms" % V.Camel
     lazy val cameHttp = "org.apache.camel" % "camel-http" % V.Camel
@@ -42,7 +42,7 @@ object ScalazCamelBuild extends Build {
 
     lazy val activemqCore = "org.apache.activemq" % "activemq-core" % V.ActiveMQ
     lazy val slf4jSimple = "org.slf4j" % "slf4j-simple" % V.Slf4j
-    lazy val scalatest = "org.scalatest" % "scalatest_2.9.1" % V.ScalaTest
+    lazy val scalatest = "org.scalatest" %% "scalatest" % V.ScalaTest
     lazy val junit = "junit" % "junit" % V.Junit
   }
 
