@@ -1,5 +1,12 @@
+h2. Update
+
+Scalaz-camel is now superseded by the "streamz":https://github.com/krasserm/streamz project and its "combinators for Apache Camel":https://github.com/krasserm/streamz#combinators-for-apache-camel.
+
+h2. Introduction
+
 This project provides a domain-specific language (DSL) for "Apache Camel":http://camel.apache.org/ that is based on the "Scala":http://www.scala-lang.org/ programming language and the "Scalaz":http://code.google.com/p/scalaz/ library. It applies functional programming (FP) concepts to "enterprise integration patterns":http://www.enterpriseintegrationpatterns.com/ (EIPs) so that integration solutions can be constructed by composing EIPs with a functional DSL.
 
 The scalaz-camel DSL is an alternative to Camel's existing Java DSL and Scala DSL. It was re-designed from scratch with the goal of a better and more native integration with the Scala programming language.
 
 "Learn more ...":https://github.com/krasserm/scalaz-camel/wiki
+
